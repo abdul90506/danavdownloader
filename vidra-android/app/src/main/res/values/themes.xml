@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <color name="ink">#18181B</color>
+    <color name="accent">#DC2626</color>
+    <color name="bg">#FFFFFF</color>
+    <color name="bg_dark">#18181B</color>
+    <color name="launcher_bg">#DC2626</color>
+    <style name="Vidra" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:colorPrimary">@color/ink</item>
+        <item name="android:colorPrimaryDark">@android:color/white</item>
+        <item name="android:statusBarColor">@android:color/white</item>
+        <item name="android:navigationBarColor">@android:color/white</item>
+    </style>
+    <style name="Vidra.Dark" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg_dark</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:statusBarColor">@color/bg_dark</item>
+        <item name="android:navigationBarColor">@color/bg_dark</item>
+    </style>
+    <style name="Vidra.Player" parent="android:Theme.Material.NoActionBar.Fullscreen">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:colorAccent">#E50914</item>
+        <item name="android:statusBarColor">@android:color/black</item>
+        <item name="android:navigationBarColor">@android:color/black</item>
+        <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="28">shortEdges</item>
+    </style>
+</resources>
