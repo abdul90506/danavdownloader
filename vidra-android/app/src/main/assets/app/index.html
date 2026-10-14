@@ -14,6 +14,7 @@
     <div class="brand-t"><h1 id="hTitle">Danav</h1><div class="sub" id="hSub"></div></div>
   </div>
   <div class="top-actions">
+    <button class="icon-btn" id="openDrawer" aria-label="Menu" title="Menu"><span data-i="menu"></span></button>
     <button class="ai-switch" id="aiSwitch" role="switch" aria-checked="false" aria-label="Danav AI"></button>
     <button class="icon-btn" id="openBrowser" aria-label="Browser" title="Browser"><span data-i="globe"></span></button>
     <button class="icon-btn" id="openSettings" aria-label="Settings" title="Settings"><span data-i="settings"></span></button>
@@ -209,6 +210,39 @@
     </div>
   </section>
 </main>
+
+
+<!-- ============================================================ SIDE DRAWER (extra tools) -->
+<div class="dr-scrim" id="drScrim"></div>
+<aside class="dr" id="dr" aria-hidden="true">
+  <div class="dr-h">
+    <svg class="logo" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="8" fill="#dc2626"/><path d="M15 13.5h7.5a10.5 10.5 0 0 1 0 21H15z" stroke="#fff" stroke-width="4.4" fill="none" stroke-linejoin="round"/><path d="M20.5 19.6v8.8l7-4.4z" fill="#fff"/></svg>
+    <div class="brand-t"><h1>Danav</h1><div class="sub" id="drSub"></div></div>
+    <button class="icon-btn" id="drClose" aria-label="Close menu"><span data-i="close"></span></button>
+  </div>
+  <div class="dr-b">
+    <div class="dr-g">
+      <button class="dr-i" data-go="home"><span class="di" data-i="home"></span><b>Home</b></button>
+      <button class="dr-i" data-go="downloads"><span class="di" data-i="dlOff"></span><b>Downloads</b><span class="dr-s" id="drDl"></span></button>
+      <button class="dr-i" data-go="private"><span class="di" data-i="private"></span><b>Private</b><span class="dr-s">PIN locked</span></button>
+      <button class="dr-i" data-go="settings"><span class="di" data-i="settings"></span><b>Settings</b></button>
+    </div>
+    <div class="dr-t">Tools</div>
+    <div class="dr-g">
+      <button class="dr-i" data-tool="ai"><span class="di" data-i="sparkle"></span><b>Danav AI</b><span class="dr-s">Chat, search &amp; calls</span></button>
+      <button class="dr-i" data-tool="call"><span class="di" data-i="call"></span><b id="drCallT">Voice call</b><span class="dr-s" id="drCall">Start talking</span></button>
+      <button class="dr-i" data-tool="circle"><span class="di" data-i="hearing"></span><b>Danav circle</b><span class="dr-s" id="drWake">Volume-Up ×3 to wake</span></button>
+      <button class="dr-i" data-tool="phone"><span class="di" data-i="touchApp"></span><b>Phone control</b><span class="dr-s" id="drPhone">Permissions</span></button>
+      <button class="dr-i" data-tool="memory"><span class="di" data-i="bulb"></span><b>What Danav remembers</b><span class="dr-s" id="drMem"></span></button>
+      <button class="dr-i" data-tool="browser"><span class="di" data-i="globe"></span><b>Browser</b><span class="dr-s">Ad blocker on</span></button>
+      <button class="dr-i" data-tool="login"><span class="di" data-i="person"></span><b>Site accounts</b><span class="dr-s" id="drLogin"></span></button>
+      <button class="dr-i" data-go="settings-ad"><span class="di" data-i="shieldOn"></span><b>Ad blocker</b><span class="dr-s" id="drAd"></span></button>
+      <button class="dr-i" data-tool="engine"><span class="di" data-i="bolt"></span><b>Download engine</b><span class="dr-s" id="drEngine">Check for updates</span></button>
+      <button class="dr-i" data-tool="clearHist"><span class="di" data-i="trash"></span><b>Clear download list</b><span class="dr-s">Files stay on the phone</span></button>
+    </div>
+    <div class="dr-f">Danav <span id="drVer"></span> · by <b>Dilhan</b></div>
+  </div>
+</aside>
 
 <!-- mini player -->
 <div class="mini" id="mini" hidden>

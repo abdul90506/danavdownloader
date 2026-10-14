@@ -34,6 +34,19 @@ public class DanavAccess extends AccessibilityService {
     @Override protected void onServiceConnected() { me = this; }
     @Override public void onAccessibilityEvent(AccessibilityEvent e) { }
     @Override public void onInterrupt() { }
+
+    /**
+     * Volume-up pressed three times in a row: Danav wakes up (or goes away). The first two presses go to the
+     * system as usual so the volume still works; the press that completes the triple is swallowed.
+     */
+    @Override protected boolean onKeyEvent(android.view.KeyEvent e) {
+        try {
+            if (e != null && e.getKeyCode() == android.view.KeyEvent.KEYCODE_VOLUME_UP && e.getAction() == android.view.KeyEvent.ACTION_DOWN) {
+                if (WakeService.volumeUp(this)) return true;
+            }
+        } catch (Throwable ignored) {}
+        return super.onKeyEvent(e);
+    }
     @Override public void onDestroy() { if (me == this) me = null; super.onDestroy(); }
     @Override public boolean onUnbind(android.content.Intent i) { if (me == this) me = null; return super.onUnbind(i); }
 
@@ -192,6 +205,7 @@ public class DanavAccess extends AccessibilityService {
 
     boolean click(AccessibilityNodeInfo n, boolean longPress) {
         if (n == null) return false;
+        bringIntoView(n);
         int act = longPress ? AccessibilityNodeInfo.ACTION_LONG_CLICK : AccessibilityNodeInfo.ACTION_CLICK;
         for (AccessibilityNodeInfo p = n; p != null; p = p.getParent()) {
             if ((longPress ? p.isLongClickable() : p.isClickable()) && p.isEnabled()) {
@@ -199,9 +213,24 @@ public class DanavAccess extends AccessibilityService {
                 break;
             }
         }
-        Rect b = new Rect();
-        n.getBoundsInScreen(b);
-        return !b.isEmpty() && tapAt(b.exactCenterX(), b.exactCenterY(), longPress ? 700 : 60);
+        // gesture fallback: tap the middle of the node, kept inside the screen, twice if the first try missed
+        for (int attempt = 0; attempt < 2; attempt++) {
+            Rect b = new Rect();
+            n.getBoundsInScreen(b);
+            if (b.isEmpty()) return false;
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            float x = Math.max(4, Math.min(dm.widthPixels - 4, b.exactCenterX()));
+            float y = Math.max(4, Math.min(dm.heightPixels - 4, b.exactCenterY()));
+            if (tapAt(x, y, longPress ? 700 : 60)) return true;
+            bringIntoView(n);
+        }
+        return false;
+    }
+
+    /** Scrolls the node into the middle of the screen when Android offers it (Android 12+). */
+    void bringIntoView(AccessibilityNodeInfo n) {
+        if (n == null || Build.VERSION.SDK_INT < 31) return;
+        try { n.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.getId()); } catch (Throwable ignored) {}
     }
 
     boolean tapAt(float x, float y, long ms) {
@@ -227,6 +256,28 @@ public class DanavAccess extends AccessibilityService {
         if (!sent) return false;
         try { l.await(3, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
         return ok[0];
+    }
+
+    /** A real finger drag between two points (sliders, WhatsApp voice notes, drag & drop, volume panels). */
+    boolean drag(float x1, float y1, float x2, float y2, long ms) {
+        if (Build.VERSION.SDK_INT < 26) return false;              // continued strokes need Android 8+
+        Path p = new Path();
+        p.moveTo(x1, y1);
+        p.lineTo(x2, y2);
+        return gesture(new GestureDescription.StrokeDescription(p, 0, Math.max(120, ms), true));
+    }
+
+    /** Drags a slider so its thumb lands on the wanted value (0-100) — a plain tap is ignored by most sliders. */
+    boolean setSlider(AccessibilityNodeInfo n, int percent) {
+        if (n == null) return false;
+        bringIntoView(n);
+        Rect b = new Rect();
+        n.getBoundsInScreen(b);
+        if (b.isEmpty()) return false;
+        float y = b.exactCenterY();
+        float target = b.left + b.width() * Math.max(0, Math.min(100, percent)) / 100f;
+        float start = b.left + b.width() * 0.5f;
+        return drag(start, y, Math.max(b.left + 8, Math.min(b.right - 8, target)), y, 420);
     }
 
     boolean setText(AccessibilityNodeInfo n, String text) {
@@ -309,6 +360,39 @@ public class DanavAccess extends AccessibilityService {
             try { Thread.sleep(150); } catch (InterruptedException e) { return null; }
         }
         return null;
+    }
+
+    /** Waits a moment for the screen to settle after something was opened or tapped. */
+    void settle(long ms) {
+        long end = System.currentTimeMillis() + ms;
+        while (System.currentTimeMillis() < end) {
+            try { Thread.sleep(180); } catch (InterruptedException e) { return; }
+        }
+    }
+
+    /** True when any visible node contains one of the given words right now (used to check a tap worked). */
+    boolean hasText(String... needles) {
+        AccessibilityNodeInfo r = root();
+        if (r == null) return false;
+        List<AccessibilityNodeInfo> all = new ArrayList<>();
+        collect(r, all, 0);
+        for (AccessibilityNodeInfo n : all) {
+            String s = full(n).toLowerCase(Locale.ROOT);
+            if (s.isEmpty()) continue;
+            for (String t : needles) if (t != null && !t.isEmpty() && s.contains(t.toLowerCase(Locale.ROOT))) return true;
+        }
+        return false;
+    }
+
+    /** Scrolls around looking for text (up to {@code pages} screenfuls) so the AI can reach things below the fold. */
+    AccessibilityNodeInfo findScroll(String text, int pages) {
+        for (int i = 0; i <= Math.max(0, pages); i++) {
+            AccessibilityNodeInfo n = find(text, false);
+            if (n != null) return n;
+            scroll("down", null);
+            settle(420);
+        }
+        return find(text, false);
     }
 
     // ------------------------------------------------------------------ screenshots (Android 11+)

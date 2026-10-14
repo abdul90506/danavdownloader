@@ -783,7 +783,7 @@
     const st = phoneState(), w = st.wake || {}, body = $('#pcBody', pc); if (!body) return;
     const row = (icon, t, sub, ok, w0, extra) => `<div class="pc-row">${ic(icon)}<div class="pc-t"><b>${t}</b><small>${sub}</small>${extra || ''}</div>${ok ? `<span class="pc-ok">${ic('check')}</span>` : `<button class="pc-btn" data-v="ask" data-w="${w0}">Allow</button>`}</div>`;
     body.innerHTML = `
-      <div class="pc-row pc-wake" data-v="wake">${ic('hearing')}<div class="pc-t"><b>Hey Danav</b><small>${esc(wakeText(w))}</small>${w.downloading ? `<div class="pc-bar"><i style="width:${w.progress || 0}%"></i></div>` : ''}</div><i class="ai-switch${w.on ? ' on' : ''}"><i class="sw"></i></i></div>
+      <div class="pc-row">${ic('hearing')}<div class="pc-t"><b>Danav circle</b><small>Press <b>Volume-Up three times</b> to wake Danav anywhere, three times again to send it away. The circle stays on screen while it is on — it never closes by itself.</small></div><span class="pc-ok">${ic('check')}</span></div>
       <div class="sub-h">Permissions</div>
       ${row('accessibility', 'Phone control', 'Lets Danav open apps, tap, type and read the screen when you ask', st.access, 'access',
         st.access || st.sdk < 33 ? '' : `<small class="pc-hint">Setting greyed out or “restricted”? Open <a data-v="ask" data-w="appinfo">App info</a> › ⋮ › Allow restricted settings, then try again.</small>`)}
@@ -796,7 +796,7 @@
       ${(st.memory || []).length ? (st.memory || []).map((m) => `<div class="pc-row pc-mem"><div class="pc-t"><small>${esc(m.t || '')}</small></div><button class="pc-btn" data-v="memDel" data-id="${esc(m.id || '')}">${ic('trash')}</button></div>`).join('')
           + `<p class="v-note"><a data-v="memClear">Forget everything</a> — Danav saves these itself while you chat or talk, and uses them to answer in your own way.</p>`
         : `<p class="v-note">Nothing yet. While you chat or talk, Danav quietly saves the things that matter (your name, language, people, habits) and uses them to be more personal. You can delete any note here.</p>`}
-      <p class="v-note">Danav acts on your phone only when you ask it in a call. Hey Danav listens for its name on the phone itself — nothing is sent anywhere until it hears “Danav”.${w.model && !w.downloading ? ` <a data-v="wakeDel">Remove voice model</a>` : ''}</p>`;
+      <p class="v-note">Danav acts on your phone only when you ask it. Nothing runs on its own in the background — the circle appears when you press Volume-Up three times (or start a call yourself).</p>`;
   }
   V.on('phone', renderPhone);
   V.on('wake', (w) => {
@@ -809,7 +809,7 @@
   function adoptCall() {
     if (call || !window.Vidra || !window.Vidra.liveInfo) return;
     let i = {}; try { i = JSON.parse(V.call('liveInfo') || '{}'); } catch (e) { /* */ }
-    if (i.active) openCall({ adopt: true, muted: i.muted });
+    if (i.active) { openCall({ adopt: true, muted: i.muted }); if (i.wake) setTimeout(minimizeCall, 30); }
   }
   V.on('callExternal', () => setTimeout(adoptCall, 50));
 
@@ -1185,7 +1185,8 @@
     const done = () => { root.hidden = true; root.classList.remove('leave'); document.body.classList.remove('ai-on'); };
     if (anim) { root.classList.add('leave'); setTimeout(done, 230); } else done();
   }
-  window.DanavAI = { open, close, md };
+  window.DanavAI = { open, close, md, phone: () => phonePage(), voice: () => voicesPage(), call: () => startCallFromApp(), adopt: () => adoptCall() };
+  function startCallFromApp() { build(); if (document.body.classList.contains('ai-on')) root.hidden = false; else open(true); setTimeout(() => openCall({}), 120); }
 
   function init() {
     const s = document.getElementById('aiSwitch');

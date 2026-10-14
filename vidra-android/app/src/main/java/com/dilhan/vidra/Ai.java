@@ -110,6 +110,13 @@ final class Ai {
     private static final int MAX_ROUNDS = 6;
 
     private static void runChat(Context ctx, Bridge.Host host, String id, JSONObject req) throws Exception {
+        // simple commands are done on the phone itself — instant, no network round trip
+        Fast.Hit fast = fastHit(ctx, req);
+        if (fast != null) {
+            event(host, id, "text", Fast.run(ctx, fast));
+            event(host, id, "done", "");
+            return;
+        }
         List<String> keys = AiKeys.get(ctx);
         if (keys.isEmpty()) { event(host, id, "error", "Danav AI isn't available in this copy of the app."); return; }
         JSONObject body = body(ctx, req.optJSONArray("messages"), req.optString("level", "auto"));
@@ -183,6 +190,26 @@ final class Ai {
             contents.put(new JSONObject().put("role", "user").put("parts", answers));
         }
         event(host, id, "done", "");
+    }
+
+    /** A short, clear command that the phone can handle itself (time, torch, volume, alarm, timer, call, app). */
+    private static Fast.Hit fastHit(Context ctx, JSONObject req) {
+        try {
+            JSONArray msgs = req.optJSONArray("messages");
+            if (msgs == null || msgs.length() == 0) return null;
+            JSONObject last = msgs.getJSONObject(msgs.length() - 1);
+            if (!"user".equals(last.optString("role"))) return null;
+            JSONArray att = last.optJSONArray("att");
+            if (att != null && att.length() > 0) return null;                 // attachments need the model
+            String text = last.optString("text", "").trim();
+            if (text.isEmpty() || text.length() > 200) return null;
+            Fast.Hit h = Fast.match(ctx, text);
+            if (h == null) return null;
+            if (h.tool != null && DanavAccess.me == null
+                    && ("whatsapp_message".equals(h.tool) || "whatsapp_call".equals(h.tool) || "system_action".equals(h.tool)))
+                return null;                                                   // those need Phone control on
+            return h;
+        } catch (Exception e) { return null; }
     }
 
     private static final int PAR = 4;              // at most this many requests in flight for one answer

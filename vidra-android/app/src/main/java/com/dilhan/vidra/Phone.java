@@ -71,7 +71,14 @@ final class Phone {
         f.put(fn("set_alarm", "Set an alarm.", pi("hour", "0-23"), pi("minute", "0-59"), p("label", "Optional label"), req("hour", "minute")));
         f.put(fn("set_timer", "Start a countdown timer.", pi("seconds", "Length in seconds"), p("label", "Optional label"), req("seconds")));
         f.put(fn("read_screen", "See what is on the phone screen now: a numbered list of buttons, texts and inputs (and a screenshot).", req()));
-        f.put(fn("tap", "Tap something on screen: the number from read_screen, or its visible text.", p("target", "Number like 7, or text like Send"), pb("long_press", "Long-press instead"), req("target")));
+        f.put(fn("tap", "Tap something on screen: the number from read_screen, or its visible text. Works on things further down a list too (it scrolls to find them).",
+                p("target", "Number like 7, or text like Send"), pb("long_press", "Long-press instead"), pb("double", "Double-tap instead"), req("target")));
+        f.put(fn("tap_xy", "Tap an exact spot on the screen (use only when read_screen can't name the thing, e.g. a custom drawing). Use the same scale as the screenshot: x,y as screen fractions 0-1 or percentages like 45%,70%.",
+                p("x", "X position: 0-1 fraction, e.g. 0.45"), p("y", "Y position: 0-1 fraction, e.g. 0.7"), pb("long_press", "Long-press instead"), req("x", "y")));
+        f.put(fn("drag", "Slide / drag on the screen — sliders, brightness, volume panels, holding a button, swiping a notification or a story. Give start and end points (fractions like 0.2,0.8 or numbers or node targets).",
+                p("from", "Start point, e.g. \"0.2,0.8\" or the text of the element"), p("to", "End point, e.g. \"0.8,0.8\""), pi("ms", "How long the drag takes in milliseconds, default 500"), req("from", "to")));
+        f.put(fn("set_slider", "Move a slider (music position, volume, brightness, video quality) to an exact value between 0 and 100.",
+                p("target", "The slider: its number from read_screen, or nearby text"), pi("value", "0-100"), req("target", "value")));
         f.put(fn("type_text", "Type text into an input field (the focused one, or the given target).", p("text", "Text to type"), p("target", "Optional field number or text"),
                 pb("submit", "Press enter / search / send after typing"), req("text")));
         f.put(fn("scroll", "Scroll the screen.", pe("direction", "Direction", "down", "up", "left", "right"), p("target", "Optional list number"), req("direction")));
@@ -127,6 +134,9 @@ final class Phone {
             case "set_timer": return "Timer";
             case "read_screen": return "Looking at the screen";
             case "tap": return "Tap: " + a.optString("target");
+            case "tap_xy": return "Tapping";
+            case "drag": return "Sliding";
+            case "set_slider": return "Sliding to " + a.optInt("value", 50) + "%";
             case "type_text": return "Typing";
             case "scroll": return "Scrolling";
             case "system_action": return a.optString("action").replace('_', ' ');
@@ -165,7 +175,10 @@ final class Phone {
                 case "set_alarm": return alarm(c, a.optInt("hour", -1), a.optInt("minute", 0), a.optString("label"));
                 case "set_timer": return timer(c, a.optInt("seconds", 0), a.optString("label"));
                 case "read_screen": return readScreen();
-                case "tap": return tap(a.optString("target"), a.optBoolean("long_press"));
+                case "tap": return tap(a.optString("target"), a.optBoolean("long_press"), a.optBoolean("double"));
+                case "tap_xy": return tapXY(a.optString("x"), a.optString("y"), a.optBoolean("long_press"));
+                case "drag": return drag(a.optString("from"), a.optString("to"), a.optInt("ms", 500));
+                case "set_slider": return setSlider(a.optString("target"), a.optInt("value", 50));
                 case "type_text": return type(a.optString("text"), a.optString("target"), a.optBoolean("submit"));
                 case "scroll": return scroll(a.optString("direction", "down"), a.optString("target"));
                 case "system_action": return system(a.optString("action"));
@@ -613,14 +626,70 @@ final class Phone {
         return new Out(cut(s.read()), true);
     }
 
-    private static Out tap(String target, boolean longPress) {
+    private static Out tap(String target, boolean longPress) { return tap(target, longPress, false); }
+
+    private static Out tap(String target, boolean longPress, boolean doubleTap) {
         DanavAccess s = DanavAccess.me;
         if (s == null) return new Out(NEED_ACCESS, false);
         AccessibilityNodeInfo n = s.find(target, false);
+        if (n == null) n = s.findScroll(target, 3);            // it may be further down the list — go look for it
         if (n == null) return new Out("\"" + target + "\" isn't on the screen." + now(s), true);
         String what = DanavAccess.label(n);
-        if (!s.click(n, longPress)) return new Out("Couldn't tap \"" + what + "\".", false);
+        boolean ok = s.click(n, longPress);
+        if (ok && doubleTap) { sleep(90); ok = s.click(n, false); }
+        if (!ok) return new Out("Couldn't tap \"" + what + "\".", false);
         return new Out("Tapped \"" + what + "\"." + now(s), true);
+    }
+
+    /** x and y are screen fractions (0-1), percentages or plain pixels — whichever the model sends. */
+    private static float[] point(String x, String y) {
+        int w = 0, h = 0;
+        if (DanavAccess.me != null) { w = DanavAccess.me.getResources().getDisplayMetrics().widthPixels; h = DanavAccess.me.getResources().getDisplayMetrics().heightPixels; }
+        float px = frac(x), py = frac(y);
+        return new float[]{px <= 1f ? px * w : px, py <= 1f ? py * h : py};
+    }
+
+    private static float frac(String v) {
+        if (v == null) return 0;
+        String t = v.trim().replace("%", "");
+        try { return Float.parseFloat(t); } catch (Exception e) { return 0; }
+    }
+
+    private static Out tapXY(String x, String y, boolean longPress) {
+        DanavAccess s = DanavAccess.me;
+        if (s == null) return new Out(NEED_ACCESS, false);
+        float[] p = point(x, y);
+        if (!s.tapAt(p[0], p[1], longPress ? 700 : 60)) return new Out("Couldn't tap there.", false);
+        return new Out("Tapped at " + Math.round(p[0]) + "," + Math.round(p[1]) + "." + now(s), true);
+    }
+
+    private static Out drag(String from, String to, int ms) {
+        DanavAccess s = DanavAccess.me;
+        if (s == null) return new Out(NEED_ACCESS, false);
+        float[] a = null, b = null;
+        if (from != null && from.contains(",")) { String[] p = from.split(","); a = point(p[0], p[1]); }
+        else if (from != null && !from.isEmpty()) { AccessibilityNodeInfo n = s.find(from, false); if (n != null) a = centerOf(n); }
+        if (to != null && to.contains(",")) { String[] p = to.split(","); b = point(p[0], p[1]); }
+        else if (to != null && !to.isEmpty()) { AccessibilityNodeInfo n = s.find(to, false); if (n != null) b = centerOf(n); }
+        if (a == null || b == null) return new Out("Tell me both points, e.g. from \"0.2,0.8\" to \"0.8,0.8\".", false);
+        if (!s.drag(a[0], a[1], b[0], b[1], ms)) return new Out("The drag didn't go through.", false);
+        return new Out("Dragged." + now(s), true);
+    }
+
+    private static float[] centerOf(AccessibilityNodeInfo n) {
+        android.graphics.Rect r = new android.graphics.Rect();
+        n.getBoundsInScreen(r);
+        return new float[]{r.exactCenterX(), r.exactCenterY()};
+    }
+
+    private static Out setSlider(String target, int value) {
+        DanavAccess s = DanavAccess.me;
+        if (s == null) return new Out(NEED_ACCESS, false);
+        AccessibilityNodeInfo n = target == null || target.isEmpty() ? null : s.find(target, false);
+        if (n == null) n = s.find("slider", false);            // a node the list called "slider"
+        if (n == null) return new Out("No slider on the screen. read_screen first.", true);
+        if (!s.setSlider(n, value)) return new Out("Couldn't move that slider.", false);
+        return new Out("Slider set to about " + Math.max(0, Math.min(100, value)) + "%." + now(s), true);
     }
 
     private static Out type(String text, String target, boolean submit) {
@@ -650,6 +719,29 @@ final class Phone {
         if (!s.global(action)) return new Out("That isn't supported on this phone.", false);
         if ("lock".equals(action) || "screenshot".equals(action)) return new Out("Done.", false);
         return new Out("Done." + now(s), true);
+    }
+
+    /** What the phone looks like right now, added to the call's instructions so Danav knows the situation. */
+    static String contextLine() {
+        try {
+            StringBuilder sb = new StringBuilder("\n\nPhone right now:");
+            java.util.Calendar c = java.util.Calendar.getInstance();
+            sb.append(" it is ").append(new java.text.SimpleDateFormat("EEEE h:mm a", java.util.Locale.ENGLISH).format(c.getTime()));
+            Context ctx = DanavAccess.me != null ? DanavAccess.me : null;
+            if (ctx != null) {
+                try {
+                    android.os.BatteryManager bm = (android.os.BatteryManager) ctx.getSystemService(Context.BATTERY_SERVICE);
+                    int lvl = bm == null ? -1 : bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
+                    if (lvl >= 0) sb.append(", battery ").append(lvl).append('%');
+                } catch (Throwable ignored) {}
+                try {
+                    String pkg = DanavAccess.me.pkg();
+                    if (pkg != null && !pkg.isEmpty()) sb.append(", the user is in ").append(DanavAccess.me.appLabel(pkg));
+                } catch (Throwable ignored) {}
+            }
+            sb.append(". Use this instead of asking.");
+            return sb.toString();
+        } catch (Throwable e) { return ""; }
     }
 
     /** JPEG of the screen as base64 for the live model, or null. */

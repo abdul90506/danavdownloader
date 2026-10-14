@@ -1,3 +1,47 @@
+# Danav 2.3.0 — kya badla (13 Oct 2026)
+
+APK: **Danav-2.3.0-arm64.apk** (86 MB, v2 signed, wahi certificate jo 2.2.0/2.1.0 ka tha — seedha update install hota hai).
+
+## 1. Right side hamburger + sidebar (naya)
+- App ke top-right (brand ke bagal me, AI switch se pehle) **3-line button** aa gaya hai.
+- Usse **side bar** khulti hai: Home, Downloads, Private, Settings + Tools group — Danav circle, Voice call, Phone control, What Danav remembers, Browser, Site accounts, Ad blocker, Download engine, Clear download list.
+- Sidebar me **widgets ke liye jagah** rakhi gayi hai (foot me version ke sath widget slot) — naye tools/widgets wahin add hote rahenge.
+- Back button dabane par pehle sidebar band hota hai, phir screen badalti hai.
+
+## 2. "Hey Danav" hataya — ab **Volume-Up ×3**
+- Wake word ("Hey Danav") UI se hata diya. Ab **Volume-Up 3 baar ek saath** dabao → Danav circle aa jata hai. Dobara Volume-Up ×3 → band.
+- Circle **khud band nahi hota** — 15 second baad bhi nahi, kabhi nahi. Sirf do cheezein band karti hain: Volume-Up ×3, ya user ke "bye / bas / band karo".
+- Pura "silent" safety net 10 minute kar diya (sirf tab jab bilkul koi baat na ho).
+- Mic service (chhoti si "Danav" notification, importance minimum) **hamesha ready** rehti hai — voice model ki ab zarurat nahi, is liye wake ab har phone pe bina download chalega. Notification me likha hota hai: "Ready · Volume-Up ×3 to wake".
+- Teen dafa dabane ka window: 2.2 second ke andar teen press, aur do press ke beech 0.9 second se zyada gap nahi.
+
+## 3. Danav ab phone theek chalata hai (tap/slide ki accuracy)
+- **Slide ke baad tap ghuma hua tha** — ab har tap se pehle element apne aap **screen ke andar** laaya jata hai (`ACTION_SHOW_ON_SCREEN`), phir clamp kiya hua centre point par tap hota hai, aur 2 koshish hoti hain (pehla attempt miss ho to dobara).
+- `scroll`/`swipe` ke baad 250 ms **settle** — animation rukne ke baad hi agla tap.
+- Naye tools: **`tap_xy`** (screen ke exact x,y par tap — double tap bhi), **`drag`** (x1,y1 → x2,y2), **`set_slider`** (slider ko `frac 0–100%` tak khinchna — brightness/volume/seek wale sliders ke liye, 10 chhote steps me smooth drag).
+- `tap` ab scroll ke andar wale item ke liye `findScroll` use karta hai (ScrollView/RecyclerView khud scroll kar ke element tak jata hai).
+- Ye sab Danav ke system instructions me bhi bata diya gaya hai, is liye AI khud sahi tool chunta hai.
+
+## 4. Video player — rotate par swipe band, warna agla video **inline**
+- Phone **rotate** karte ho → swipe se agla/pehla video **band** (VLC/landscape me bas player chalta hai). Wapas portrait → swipe phir kaam karta hai.
+- Portrait me swipe karo → agla video **usi jagah, bina kaale gap** ke aa jata hai: pager (pvPrev / pv / pvNext) pura ek sath glid karta hai, agla player pehle se **tayyar** (muted, pre-loaded) hota hai — is liye screen kaali nahi hoti aur **player bhi agle video ke sath chalta** hai.
+- Smoothness: `PathInterpolator(0.3, 0, 0.6, 1)` 300 ms glide, agla page tayyar na ho to +160 ms, phir 240 ms hold aur pichla player chup-chaap release (koi awaaz ka overlap nahi — purane player ka "audio becoming noisy" band hai).
+- Rotate karne par purane pager pages release ho jate hain (memory aur awaaz dono saaf).
+
+## 5. Fast local replies (naya) — bina internet, foran
+- Awaaz/fast commands ab **phone hi me** hal hote hain (koi server round-trip nahi): time, date, battery, torch on/off, volume up/down/mute/set, ring vs media, timer, alarm, screenshot, back, home, WhatsApp message/call, phone call, "X app kholo".
+- Circle wale live mode me AI ko phone ka live context milta hai: **"abhi <din> <waqt>, battery N%, user <app> me hai"** — is liye ye poochne ki zarurat nahi.
+
+## 6. Jaga (128 MB rule)
+- Naya build karne se pehle purani APK aur build outputs hata diye jate hain; repo root me sirf **ek** APK rehti hai.
+
+## 7. Wahi cheezein jo qaim hain
+- Chhote kaam ka "kar diya" nahi batata, jab tak poocha na jaye chup; pehle sunta hai, phir karta hai.
+- Memory (What Danav remembers) waisi hi — save/delete/clear.
+- Koi alag Danav AI notification nahi (sirf chhoti si wake/mic service).
+
+---
+
 # Danav 2.2.0 — kya badla (13 Oct 2026)
 
 APK: **Danav-2.2.0-arm64.apk** (86 MB, v2 signed, wahi certificate jo 2.1.0 ka tha — seedha update install hota hai).

@@ -31,6 +31,7 @@
     if (v === 'private' && window.VaultUI) VaultUI.enter();
   }
   function goBack() {
+    if (window.VDrawer && VDrawer.isOpen()) { VDrawer.close(); return true; }
     if (Player.open) { Player.hide(); return true; }
     if (view === 'settings') { show(prevView === 'settings' ? 'home' : prevView); return true; }
     if (view === 'videos' && Videos.back()) return true;
@@ -52,6 +53,82 @@
     else show(t);
   });
   function openBrowser(url, mode) { call('openBrowser', url || '', mode || 'detect'); }
+
+  // ================================================================ side drawer (extra tools)
+  const drEl = $('#dr'), drScrim = $('#drScrim');
+  let drOpen = false;
+  function drawer(on) {
+    if (!drEl) return;
+    drOpen = on;
+    drEl.classList.toggle('show', on);
+    drScrim.classList.toggle('show', on);
+    drEl.setAttribute('aria-hidden', on ? 'false' : 'true');
+    if (on) renderDrawer();
+  }
+  function phoneSt() { try { return JSON.parse(call('phoneState') || '{}'); } catch (e) { return {}; } }
+  function wakeLine(w) {
+    if (!w) return 'Off';
+    if (w.downloading) return 'Downloading model ' + (w.progress || 0) + '%';
+    if (!w.on) return w.model ? 'Off · tap to turn on' : 'Off · needs voice model';
+    if (w.status === 'call') return 'On · in a call now';
+    if (w.status === 'listening') return 'On · say “Hey Danav”';
+    if (w.status === 'paused') return 'On · mic busy, waiting';
+    if (w.status === 'error') return w.error || 'On · needs attention';
+    return 'On';
+  }
+  function renderDrawer() {
+    const st = phoneSt(), w = st.wake || {}, s = V.settings || {};
+    $('#drSub').textContent = (V.state && V.state.appVersion ? 'v' + V.state.appVersion : 'All video downloader');
+    $('#drVer').textContent = V.state && V.state.appVersion ? 'v' + V.state.appVersion : '';
+    $('#drDl').textContent = V.history.length ? V.history.length + ' saved' : '';
+    $('#drWake').textContent = (() => { try { const l = JSON.parse(call('liveInfo') || '{}'); return l.active ? (l.wake ? 'On · listening now' : 'On · in a call') : 'Volume-Up ×3 to wake'; } catch (e) { return 'Volume-Up ×3 to wake'; } })();
+    $('#drPhone').textContent = st.access ? (st.overlay ? 'Ready' : 'Overlay needed') : 'Off · allow accessibility';
+    $('#drMem').textContent = (st.memory || []).length + (st.memory && st.memory.length === 1 ? ' note' : ' notes');
+    $('#drLogin').textContent = (V.signedIn || []).length ? V.signedIn.length + ' signed in' : 'Not signed in';
+    $('#drAd').textContent = (V.AD_LEVELS && V.AD_LEVELS[+s.adLevel || 2]) ? V.AD_LEVELS[+s.adLevel || 2].name : 'Optimal';
+    const live = (() => { try { return JSON.parse(call('liveInfo') || '{}'); } catch (e) { return {}; } })();
+    $('#drCallT').textContent = live.active ? 'Voice call running' : 'Voice call';
+    $('#drCall').textContent = live.active ? (live.muted ? 'Muted · tap to open' : 'Tap to open') : 'Start talking';
+    const liveOn = (() => { try { return JSON.parse(call('liveInfo') || '{}').active === true; } catch (e) { return false; } })();
+    $$('.dr-i').forEach((b) => b.classList.toggle('on', b.dataset.tool === 'circle' && liveOn));
+  }
+  function drawerOpen() { return drOpen; }
+  function drawerAction(tool) {
+    const st = phoneSt(), w = st.wake || {};
+    if (tool === 'ai') { drawer(false); if (window.DanavAI) window.DanavAI.open(true); else $('#aiSwitch').click(); return; }
+    if (tool === 'call') {
+      drawer(false);
+      let live = {}; try { live = JSON.parse(call('liveInfo') || '{}'); } catch (e) { /* */ }
+      if (window.DanavAI) { window.DanavAI.open(true); setTimeout(() => { if (live.active) window.DanavAI.adopt(); }, 200); }
+      else if (window.DanavAI) window.DanavAI.call();
+      return;
+    }
+    if (tool === 'circle') { drawer(false); if (window.DanavAI) window.DanavAI.open(true); if (window.DanavAI && window.DanavAI.phone) window.DanavAI.phone(); return; }
+    if (tool === 'phone' || tool === 'memory') { drawer(false); if (window.DanavAI) window.DanavAI.open(true); if (window.DanavAI && window.DanavAI.phone) window.DanavAI.phone(); return; }
+    if (tool === 'browser') { drawer(false); openBrowser(''); return; }
+    if (tool === 'login') { drawer(false); show('settings'); setTimeout(() => { const t = $('#signSites'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 60); return; }
+    if (tool === 'engine') { drawer(false); show('settings'); setTimeout(() => { const b = $('#updateEngine'); if (b) b.click(); }, 60); return; }
+    if (tool === 'clearHist') {
+      drawer(false);
+      V.confirm('Clear the list?', 'Downloaded files stay on your phone.', 'Clear list').then((ok) => {
+        if (!ok) return; call('clearHistory'); try { V.history = JSON.parse(call('getState') || '{}').history || []; } catch (e) { /* */ }
+        if (V.show) V.show(view === 'downloads' ? 'home' : view); renderDrawer();
+      });
+      return;
+    }
+  }
+  if ($('#openDrawer')) $('#openDrawer').addEventListener('click', () => drawer(!drOpen));
+  if ($('#drClose')) $('#drClose').addEventListener('click', () => drawer(false));
+  if (drScrim) drScrim.addEventListener('click', () => drawer(false));
+  if (drEl) drEl.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-tool]');
+    if (t) { drawerAction(t.dataset.tool); return; }
+    const g = e.target.closest('[data-go]');
+    if (g) { drawer(false); show(g.dataset.go); }
+  });
+  V.on('phone', () => { if (drOpen) renderDrawer(); });
+  V.on('resume', () => { if (drOpen) renderDrawer(); });
+  window.VDrawer = { open: drawer, close: () => drawer(false), isOpen: drawerOpen, render: renderDrawer };
 
   // ================================================================ HOME
   const urlIn = $('#url');

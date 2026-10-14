@@ -192,10 +192,24 @@
     paint();
     return { set: (l) => { if (!dragging) set(l, false); }, get: () => cur };
   };
+  // ---------------------------------------------------------------- drag guard
+  // When a swipe / drag ends, the browser still fires a click on whatever is under the finger — that is how a
+  // slide used to press the button underneath. Swallow that click.
+  let gdX = 0, gdY = 0, gdMoved = false, gdAt = 0;
+  document.addEventListener('pointerdown', (e) => { gdX = e.clientX; gdY = e.clientY; gdMoved = false; }, true);
+  document.addEventListener('pointermove', (e) => { if (Math.abs(e.clientX - gdX) + Math.abs(e.clientY - gdY) > 9) { gdMoved = true; gdAt = performance.now(); } }, true);
+  document.addEventListener('pointerup', () => { if (gdMoved) gdAt = performance.now(); }, true);
+  document.addEventListener('pointercancel', () => { gdMoved = false; }, true);
+  document.addEventListener('click', (e) => {
+    if (gdMoved && performance.now() - gdAt < 340) { gdMoved = false; e.stopPropagation(); e.preventDefault(); }
+  }, true);
+  // scrolling a list must not press the row either
+  document.addEventListener('scroll', () => { gdAt = performance.now(); gdMoved = true; }, true);
+
   V.compact = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'K' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n || 0));
 
   // ---------------------------------------------------------------- state shared by views
-  V.settings = {}; V.engine = { state: 'init' }; V.history = []; V.signedIn = [];
+  V.settings = {}; V.engine = { state: 'init' }; V.history = []; V.signedIn = []; V.state = {};
   V.jobs = new Map();
   V.cardJob = new Map();
   V.isActive = (j) => ['queued', 'starting', 'running', 'merging', 'saving'].includes(j.state);
@@ -203,7 +217,7 @@
   V.loadState = function () {
     let s = {};
     try { s = JSON.parse(V.call('getState') || '{}'); } catch (e) { /* */ }
-    V.settings = s.settings || V.settings; V.engine = s.engine || V.engine; V.history = s.history || []; V.signedIn = s.signedIn || [];
+    V.settings = s.settings || V.settings; V.engine = s.engine || V.engine; V.history = s.history || []; V.signedIn = s.signedIn || []; V.state = s;
     try { V.applyTheme(V.call('isDark')); } catch (e) { /* */ }
     for (const j of s.jobs || []) { V.jobs.set(j.id, j); if (j.req && j.req.vkey) V.cardJob.set(j.req.vkey, j.id); }
     return s;

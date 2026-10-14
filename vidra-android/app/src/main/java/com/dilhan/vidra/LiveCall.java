@@ -82,7 +82,7 @@ final class LiveCall {
 
     private final boolean wake;                        // started by "Hey Danav" (app may be closed)
     private byte[] preRoll;                            // the words that woke us, replayed to the model first
-    private static final long WAKE_IDLE_MS = 5 * 60_000L;    // a wake call never ends because of a short silence
+    private static final long WAKE_IDLE_MS = 10 * 60_000L;   // only a 10-minute total silence (they walked away) closes it
     private volatile long lastAct = SystemClock.elapsedRealtime();
     private volatile boolean endAfterTurn;
     private final java.util.concurrent.ExecutorService tools = java.util.concurrent.Executors.newSingleThreadExecutor();
@@ -196,18 +196,18 @@ final class LiveCall {
             + "answers), and use what you already remember from earlier talks without telling them you remember it. "
             + "When the user says bye / bas / band karo, say a very short goodbye and call end_call. Otherwise never end the call yourself — stay on the line and wait, even when the "
             + "user goes quiet for a long time.";
-    private static final String WAKE_RULES = "\n\nIMPORTANT: this call was opened automatically because the phone thought it heard your name. The first audio you hear is what triggered it. "
-            + "First decide: did the speaker clearly say your name \"Danav\" (Hey Danav / Danav)? Similar words like Dana, Daane, Dan, Danish, Dhaniya, Diwan do NOT count. "
-            + "If your name was NOT said, call dismiss immediately and say nothing at all — don't answer, don't ask anything. "
-            + "If the name was said and nothing else, answer with one or two words like 'Ji?' or 'Haan, boliye' and listen. If a request followed your name, just do it. "
-            + "Stay on this call until the user says bye / bas / band karo (then a tiny goodbye and end_call) — never end it yourself because of a silence or a finished task.";
+    private static final String WAKE_RULES = "\n\nIMPORTANT: the user woke you up on purpose by pressing the volume-up button three times — the Danav circle is on screen now. "
+            + "If they start talking straight away, just do what they ask. If you hear nothing yet, greet them with one short word or line (\"Ji?\" / \"Haan, boliye\") and wait. "
+            + "Never call dismiss — the user opened this themselves. "
+            + "Stay on this call until the user says bye / bas / band karo (then a tiny goodbye and end_call), or until they press volume-up three times again. "
+            + "Never end it yourself because of a silence or because a task finished.";
     private JSONObject setup() throws Exception {
         JSONObject s = new JSONObject()
                 .put("model", "models/" + MODEL)
                 .put("generationConfig", new JSONObject()
                         .put("responseModalities", new JSONArray().put("AUDIO"))
                         .put("speechConfig", new JSONObject().put("voiceConfig", new JSONObject().put("prebuiltVoiceConfig", new JSONObject().put("voiceName", voice)))))
-                .put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", Ai.liveIdentity(ctx) + PHONE_RULES + (wake ? WAKE_RULES : "")))))
+                .put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", Ai.liveIdentity(ctx) + PHONE_RULES + (wake ? WAKE_RULES : "") + Phone.contextLine()))))
                 .put("tools", Phone.tools(wake))
                 .put("inputAudioTranscription", new JSONObject())
                 .put("outputAudioTranscription", new JSONObject())

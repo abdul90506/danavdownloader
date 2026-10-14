@@ -131,7 +131,18 @@ public class PlayerActivity extends Activity {
     private ImageView bigPlay;
     private boolean awaitFrame;
     private float flingVx;
-    private final Runnable revealVideo = () -> { awaitFrame = false; pv.animate().cancel(); pv.animate().translationX(0).alpha(1f).setDuration(300).setInterpolator(new android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)).start(); };
+    // ---- full-screen pager: the next / previous video is played live on its own page, so a swipe moves the
+    // picture itself and there is never a black moment in between
+    private FrameLayout pager;
+    private PlayerView pvPrev, pvNext;
+    private boolean pagesOn;          // neighbour pages prepared for this swipe
+    private boolean pagesForward;
+    private final Runnable revealVideo = () -> {
+        awaitFrame = false;
+        pv.animate().cancel();
+        pv.animate().translationX(0).alpha(1f).setDuration(300).setInterpolator(new android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)).start();
+        releasePages(true);
+    };
     private long sleepAt;
     private LoudnessEnhancer boost;
     private int boostPct;                // 0..100 extra
@@ -249,6 +260,54 @@ public class PlayerActivity extends Activity {
         applySubtitleStyle();
     }
 
+    /** A silent second player that shows the neighbouring video on its own page while the finger drags. */
+    private Player createLoader() {
+        DefaultExtractorsFactory ex = new DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true);
+        ExoPlayer p = new ExoPlayer.Builder(this, MusicService.renderers(this))
+                .setMediaSourceFactory(new DefaultMediaSourceFactory(new VaultDataSource.Factory(this), ex))
+                .setAudioAttributes(new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), false)
+                .build();
+        p.setVolume(0f);
+        p.setHandleAudioBecomingNoisy(false);
+        return p;
+    }
+
+    /** Brings the neighbouring page in (its own player) so the swipe shows the real next / previous video. */
+    private void preparePages(boolean forward) {
+        if (player == null || player instanceof VlcPlayer) return;       // the compatibility engine has no second player
+        try {
+            int i = player.getCurrentMediaItemIndex() + (forward ? 1 : -1);
+            if (i < 0 || i >= items.size()) return;
+            PlayerView v = forward ? pvNext : pvPrev;
+            if (v.getPlayer() != null) return;
+            Player p = createLoader();
+            v.setPlayer(p);
+            v.setResizeMode(resizeMode);          // resize mode lives on the view, not the player
+            p.setMediaItem(mediaItem(i));
+            p.prepare();
+            p.setPlayWhenReady(true);
+            v.setVisibility(View.VISIBLE);
+            v.setAlpha(0f);
+            v.animate().alpha(1f).setDuration(120).start();
+            pagesOn = true;
+            pagesForward = forward;
+        } catch (Throwable ignored) {}
+    }
+
+    /** Drops both neighbouring pages and puts the pager back in the middle. */
+    private void releasePages(boolean reset) {
+        pagesOn = false;
+        for (PlayerView v : new PlayerView[]{pvPrev, pvNext}) {
+            if (v == null) continue;
+            Player p = v.getPlayer();
+            v.setPlayer(null);
+            if (p != null) { try { p.release(); } catch (Exception ignored) {} }
+            v.setVisibility(View.GONE);
+            v.setAlpha(0f);
+        }
+        if (reset && pager != null) { pager.animate().cancel(); pager.setTranslationX(0); }
+    }
+
     private static boolean decoderProblem(PlaybackException e) {
         switch (e.errorCode) {
             case PlaybackException.ERROR_CODE_DECODER_INIT_FAILED:
@@ -334,6 +393,7 @@ public class PlayerActivity extends Activity {
                 updateTitle(); updateNav(); audioWarned = false; errBox.setVisibility(View.GONE);   // orientation is kept when moving to another video
                 // hide the picture until the new video's first frame is drawn — no stretched / wrong-ratio flash
                 if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED && !awaitFrame) { awaitFrame = true; pv.animate().cancel(); pv.setAlpha(0f); h.removeCallbacks(revealVideo); h.postDelayed(revealVideo, 900); }
+                if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) releasePages(true);
                 if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && stopAfterThis) { stopAfterThis = false; player.pause(); }
                 retrieverUri = null;
                 releasePreviewPlayer.run();
@@ -408,7 +468,20 @@ public class PlayerActivity extends Activity {
         pv.setUseController(false);
         pv.setShutterBackgroundColor(Color.BLACK);
         pv.setKeepContentOnPlayerReset(true);
-        root.addView(pv, new FrameLayout.LayoutParams(-1, -1));
+        pvPrev = new PlayerView(this);
+        pvNext = new PlayerView(this);
+        for (PlayerView x : new PlayerView[]{pvPrev, pvNext}) {
+            x.setUseController(false);
+            x.setShutterBackgroundColor(Color.TRANSPARENT);
+            x.setKeepContentOnPlayerReset(true);
+            x.setAlpha(0f);
+            x.setVisibility(View.GONE);
+        }
+        pager = new FrameLayout(this);
+        pager.addView(pvPrev, new FrameLayout.LayoutParams(-1, -1));
+        pager.addView(pv, new FrameLayout.LayoutParams(-1, -1));
+        pager.addView(pvNext, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(pager, new FrameLayout.LayoutParams(-1, -1));
 
         // gestures on a transparent layer under the controls
         View gestures = new View(this);
@@ -899,6 +972,7 @@ public class PlayerActivity extends Activity {
     @Override public void onConfigurationChanged(@NonNull Configuration c) {
         super.onConfigurationChanged(c);
         applyOrientationUi();
+        if (!portrait()) { releasePages(true); pv.setAlpha(1f); pv.setTranslationX(0); }
     }
 
     private void seekBy(long ms) {
@@ -1054,7 +1128,8 @@ public class PlayerActivity extends Activity {
                         startBright = brightness();
                         startVol = volumePct();
                     } else if (Math.abs(tdx) > dp(24) && Math.abs(tdx) > Math.abs(tdy) * 1.5f) {
-                        gestureMode = 4; swipeDx = 0; swipeX0 = tdx;      // horizontal slide = next / previous video
+                        if (!portrait()) return false;                   // rotated: slide sideways does nothing (only the buttons skip)
+                        gestureMode = 4; swipeDx = 0; swipeX0 = tdx;      // upright: horizontal slide = next / previous video
                     } else return false;
                 }
                 if (gestureMode == 1) {
@@ -1070,8 +1145,15 @@ public class PlayerActivity extends Activity {
                     swipeDx = x;
                     boolean can = x < 0 ? player.hasNextMediaItem() : player.hasPreviousMediaItem();
                     float tx = can ? x : x * 0.22f;                       // rubber band at the ends of the list
-                    pv.setTranslationX(tx);
-                    pv.setAlpha(1f - Math.min(0.35f, Math.abs(tx) / W * 0.6f));
+                    if (pageMode() && can) {
+                        if (!pagesOn || pagesForward != (x < 0)) { releasePages(true); preparePages(x < 0); }
+                        pager.setTranslationX(tx);                        // the whole page (both videos) follows the finger
+                    } else if (pageMode()) {
+                        pager.setTranslationX(tx);                        // nothing to go to: rubber band, still no black
+                    } else {
+                        pv.setTranslationX(tx);
+                        pv.setAlpha(1f - Math.min(0.35f, Math.abs(tx) / W * 0.6f));
+                    }
                 }
                 return true;
             }
@@ -1109,25 +1191,68 @@ public class PlayerActivity extends Activity {
     private boolean scaling;
     private float swipeDx, swipeX0;
 
-    /** Slide left = next video, slide right = previous. The picture follows the finger. */
+    /** True while a swipe is allowed to slide the whole page: upright (never rotated) and more than one video. */
+    private boolean pageMode() { return portrait() && items.size() > 1 && pager != null; }
+
+    /** Slide left = next video, slide right = previous. The whole page moves, so both videos stay on screen. */
     private void finishSwipe(float dx) {
         int W = Math.max(1, root.getWidth());
         boolean next = dx < 0;
         // a real slide (about a third of the screen) or a quick flick — a small accidental move snaps back
         boolean far = Math.abs(dx) > W * 0.30f || (Math.abs(flingVx) > dp(900) && Math.signum(flingVx) == Math.signum(dx) && Math.abs(dx) > dp(48));
         boolean can = player != null && (next ? player.hasNextMediaItem() : player.hasPreviousMediaItem());
-        if (far && can) { changeVideo(next); return; }
+        if (far && can) { slidePage(next); return; }
         if (far) flash(items.size() < 2 ? "No other videos in this list" : next ? "This is the last video" : "This is the first video");
+        if (pager != null && pager.getTranslationX() != 0) {
+            pager.animate().cancel();
+            pager.animate().translationX(0).setDuration(280).setInterpolator(new android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f))
+                    .withEndAction(() -> releasePages(false)).start();
+            return;
+        }
         pv.animate().cancel();
         pv.animate().translationX(0).alpha(1f).setDuration(280).setInterpolator(new android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)).start();
+    }
+
+    /**
+     * Glides the page to the neighbouring video. The neighbour is already playing on its own page, so the picture
+     * travels with the finger and there is no black gap: at the end the real player switches to that video and the
+     * page snaps back in the same frame — same picture, same place.
+     */
+    private void slidePage(boolean next) {
+        if (player == null) return;
+        int W = Math.max(1, root.getWidth());
+        if (!pagesOn || pagesForward != next) { releasePages(true); preparePages(next); }
+        if (!pagesOn) { legacyChange(next); return; }              // no page available (e.g. the VLC engine)
+        final boolean wasReady = pagesOn;
+        pager.animate().cancel();
+        float left = W - Math.abs(pager.getTranslationX());
+        long dur = Math.max(140, Math.min(300, Math.round(300 * left / W)));
+        pager.animate().translationX(next ? -W : W).setDuration(dur + (wasReady ? 0 : 160)).setInterpolator(new android.view.animation.PathInterpolator(0.3f, 0f, 0.6f, 1f))
+                .withEndAction(() -> {
+                    if (player == null) { releasePages(true); return; }
+                    boolean play = player.getPlayWhenReady() || player.getPlaybackState() == Player.STATE_IDLE;
+                    if (next) player.seekToNextMediaItem(); else player.seekToPreviousMediaItem();
+                    if (player.getPlaybackState() == Player.STATE_IDLE) player.prepare();
+                    if (play) player.play();
+                    updateBigPlay();
+                    // let the main player settle on the new video, then swap in one frame — the neighbour page
+                    // keeps showing it in the meantime, so nothing flashes
+                    h.postDelayed(() -> { releasePages(true); pv.setAlpha(1f); }, 240);
+                }).start();
     }
 
     /** Animated move to the next / previous video (swipe and the Next button). */
     private void changeVideo(boolean next) {
         if (player == null || !(next ? player.hasNextMediaItem() : player.hasPreviousMediaItem())) return;
+        if (pageMode()) { slidePage(next); return; }
+        legacyChange(next);
+    }
+
+    /** The old one-view animation, kept for the rotated player and the VLC fallback engine. */
+    private void legacyChange(boolean next) {
+        if (player == null || !(next ? player.hasNextMediaItem() : player.hasPreviousMediaItem())) return;
         int W = Math.max(1, root.getWidth());
         pv.animate().cancel();
-        // keep the finger's momentum: slide the rest of the way out, then the next video glides in from the other side
         float left = W - Math.abs(pv.getTranslationX());
         long dur = Math.max(120, Math.min(260, Math.round(260 * left / W)));
         pv.animate().translationX(next ? -W : W).alpha(0f).setDuration(dur).setInterpolator(new android.view.animation.PathInterpolator(0.3f, 0f, 0.6f, 1f))

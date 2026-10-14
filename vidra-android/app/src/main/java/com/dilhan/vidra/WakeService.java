@@ -8,6 +8,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.media.AudioFormat;
@@ -41,7 +42,7 @@ import java.util.zip.ZipInputStream;
 public class WakeService extends Service {
     private static final String CH = "danav_wake";
     private static final int ID = 7302, RATE = 16000;
-    static final String ACT_OFF = "com.dilhan.vidra.WAKE_OFF";
+    static final String ACT_OFF = "com.dilhan.vidra.WAKE_OFF", ACT_SESSION = "com.dilhan.vidra.SESSION";
     static final String MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-small-hi-0.22.zip";
     private static final String WORD = "दानव";
     private static final String GRAMMAR = "[\"हे दानव\", \"दानव\", \"[unk]\"]";
@@ -50,19 +51,26 @@ public class WakeService extends Service {
     private static final float MIN_CONF_MEDIA = 0.82f;  // while music / a video is playing through the speaker
     /** Ignore everything for a while (a false trigger was dismissed, or a call just ended). */
     private static volatile long ignoreUntil;
+    // Vol-up pressed three times in a row: Danav wakes up (circle appears) / a second triple press sends it away.
+    private static final long VOL_WINDOW = 2200, VOL_GAP = 900;
+    private static volatile long volFirst, volLast;
+    private static volatile int volCount;
+    private static final Object volLock = new Object();
 
     private static volatile WakeService me;
     private static volatile Context me0;               // application context of the running listener
     private static volatile String status = "off";           // off | loading | listening | paused | call | error
     private static volatile String error = "";
     private volatile boolean stop;
+    private static volatile boolean holder;           // quiet microphone holder that keeps the shortcut alive
+    private static volatile boolean sessionOnly;      // true = volume-up session: no wake word, no Vosk
     private Thread loop;
     private final Handler ui = new Handler(Looper.getMainLooper());
 
     // ------------------------------------------------------------------ settings & state
 
     static SharedPreferences prefs(Context c) { return c.getSharedPreferences("danav", Context.MODE_PRIVATE); }
-    static boolean wanted(Context c) { return prefs(c).getBoolean("wake", false); }
+    static boolean wanted(Context c) { return prefs(c).getBoolean("wake", true); }
     static File modelDir(Context c) { return new File(c.getFilesDir(), "vosk-hi"); }
     static boolean modelReady(Context c) { return new File(modelDir(c), ".ok").exists(); }
 
@@ -75,17 +83,50 @@ public class WakeService extends Service {
 
     private static void push(Context c) { LiveCall.RELAY.send("wake", state(c).toString()); }
 
+    /**
+     * One volume-up press recorded (from the accessibility key filter or the media-button receiver).
+     * @return true when the key should be swallowed (a triple press fired, or we are in a call).
+     */
+    static boolean volumeUp(Context c) {
+        long now = SystemClock.elapsedRealtime();
+        synchronized (volLock) {
+            if (volCount > 0 && (now - volLast > VOL_GAP || now - volFirst > VOL_WINDOW)) volCount = 0;
+            if (volCount == 0) volFirst = now;
+            volLast = now;
+            volCount++;
+            if (volCount >= 3) { volCount = 0; trigger(c); return true; }
+        }
+        return LiveCall.active();                    // inside a call the volume keys never blast the speaker
+    }
+
+    /** Three quick volume-up presses: bring the Danav circle up, or send the running one away. */
+    private static void trigger(Context c) {
+        Context app = c.getApplicationContext();
+        if (LiveCall.active()) { LiveCall.stop(); return; }        // second triple press → it goes
+        if (app.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != 0) {
+            error = "Danav needs the microphone permission."; push(app); return;
+        }
+        // session mode: no wake word, no voice model — the mic service only keeps the call allowed in the background
+        try {
+            Intent i = new Intent(app, WakeService.class).setAction(ACT_SESSION);
+            if (Build.VERSION.SDK_INT >= 26) app.startForegroundService(i); else app.startService(i);
+        } catch (Exception e) { error = "Android didn\'t allow Danav to start. Open the app once."; push(app); return; }
+        new android.os.Handler(Looper.getMainLooper()).postDelayed(() -> {
+            try { LiveCall.startWake(app, null); } catch (Exception e) { error = String.valueOf(e.getMessage()); push(app); }
+        }, 350);
+    }
+
     /** Turns Hey Danav on/off. Must be called while the app is on screen (Android only lets a visible app start mic services). */
     static String set(Context c, boolean on) {
         prefs(c).edit().putBoolean("wake", on).apply();
         if (!on) { c.stopService(new Intent(c, WakeService.class)); status = "off"; push(c); return "ok"; }
-        if (!modelReady(c)) return "model";
+        // no voice model needed any more: the service only keeps the microphone ready for the volume-up shortcut
         if (c.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != 0) return "mic";
         return startNow(c) ? "ok" : "blocked";
     }
 
     /** Resumes listening when the app is opened (after a reboot or after Android stopped the service). */
-    static void ensure(Context c) { if (wanted(c) && me == null && modelReady(c) && c.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == 0) startNow(c); }
+    static void ensure(Context c) { if (wanted(c) && me == null && c.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == 0) startNow(c); }
 
     private static boolean startNow(Context c) {
         try {
@@ -95,8 +136,14 @@ public class WakeService extends Service {
         } catch (Exception e) { error = "Android didn't allow it to start: " + e.getMessage(); return false; }
     }
 
-    /** A call ended: the listener picks the microphone back up by itself; this only refreshes the notification. */
-    static void callEnded(Context c) { WakeService s = me; if (s != null) s.ui.postDelayed(() -> s.notifyNow(), 400); }
+    /** A call ended: a volume session stops itself here, the wake listener picks the microphone back up. */
+    static void callEnded(Context c) {
+        WakeService s = me;
+        if (s == null) return;
+        if (holder) { s.ui.postDelayed(() -> s.setStatus("ready"), 250); return; }
+        if (sessionOnly) { s.ui.postDelayed(() -> { if (!LiveCall.active()) s.stopSelf(); }, 250); return; }
+        s.ui.postDelayed(() -> s.notifyNow(), 400);
+    }
 
     /** Stay deaf for a while — used after a false trigger was dismissed, so the tail of the audio can't wake it again. */
     static void cooldown(Context c, long ms) {
@@ -117,12 +164,49 @@ public class WakeService extends Service {
 
     // ------------------------------------------------------------------ service
 
+    /** Volume-up triple press also works through the media-button broadcast (used when accessibility is off). */
+    private android.content.BroadcastReceiver mediaButtons;
+
+    private void registerMediaButtons() {
+        if (mediaButtons != null) return;
+        mediaButtons = new android.content.BroadcastReceiver() {
+            @Override public void onReceive(Context c, Intent i) {
+                if (i == null || !Intent.ACTION_MEDIA_BUTTON.equals(i.getAction())) return;
+                android.view.KeyEvent k = i.getParcelableExtra(Intent.EXTRA_KEY_EVENT);
+                if (k == null || k.getKeyCode() != android.view.KeyEvent.KEYCODE_VOLUME_UP || k.getAction() != android.view.KeyEvent.ACTION_DOWN) return;
+                if (volumeUp(c) && isOrderedBroadcast()) setResultCode(android.app.Activity.RESULT_CANCELED);
+            }
+        };
+        try {
+            IntentFilter f = new IntentFilter(Intent.ACTION_MEDIA_BUTTON);
+            if (Build.VERSION.SDK_INT >= 33) registerReceiver(mediaButtons, f, null, null, Context.RECEIVER_EXPORTED);
+            else registerReceiver(mediaButtons, f);
+        } catch (Exception e) { mediaButtons = null; }
+    }
+
+    private void unregisterMediaButtons() {
+        if (mediaButtons == null) return;
+        try { unregisterReceiver(mediaButtons); } catch (Exception ignored) {}
+        mediaButtons = null;
+    }
+
     @Override public IBinder onBind(Intent i) { return null; }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACT_OFF.equals(intent.getAction())) {
             prefs(this).edit().putBoolean("wake", false).apply();
             stopSelf(); return START_NOT_STICKY;
+        }
+        if (intent != null && ACT_SESSION.equals(intent.getAction())) {
+            // started by the volume-up triple press: keep the microphone allowed for the live call, listen for nothing
+            try {
+                if (Build.VERSION.SDK_INT >= 30) startForeground(ID, build(this), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+                else startForeground(ID, build(this));
+            } catch (Exception e) { stopSelf(); return START_NOT_STICKY; }
+            me = this; me0 = getApplicationContext(); sessionOnly = true; status = "ready";
+            notifyNow(); push(this);
+            if (!holder) ui.postDelayed(() -> { if (!LiveCall.active()) stopSelf(); }, 2500);
+            return START_STICKY;
         }
         try {
             if (Build.VERSION.SDK_INT >= 30) startForeground(ID, build(this), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
@@ -132,8 +216,14 @@ public class WakeService extends Service {
             error = "Open Danav once to turn Hey Danav back on.";
             stopSelf(); return START_NOT_STICKY;
         }
-        if (loop == null) {
+        if (loop == null && !sessionOnly) {
             me = this; me0 = getApplicationContext(); stop = false; error = "";
+            registerMediaButtons();
+            if (!modelReady(this)) {
+                // no "Danav" voice model: stay as the quiet microphone holder for the volume-up shortcut
+                sessionOnly = true; holder = true; status = "ready"; notifyNow(); push(this);
+                return START_STICKY;
+            }
             loop = new Thread(this::listen, "danav-wake");
             loop.start();
         }
@@ -142,6 +232,9 @@ public class WakeService extends Service {
 
     @Override public void onDestroy() {
         stop = true;
+        sessionOnly = false;
+        holder = false;
+        unregisterMediaButtons();
         if (me == this) me = null;
         status = "off";
         Thread t = loop; loop = null;
@@ -159,7 +252,7 @@ public class WakeService extends Service {
     private static Notification build(Context c) {
         NotificationManager nm = (NotificationManager) c.getSystemService(NOTIFICATION_SERVICE);
         if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CH) == null) {
-            NotificationChannel ch = new NotificationChannel(CH, "Hey Danav", NotificationManager.IMPORTANCE_MIN);
+            NotificationChannel ch = new NotificationChannel(CH, "Danav", NotificationManager.IMPORTANCE_MIN);
             ch.setShowBadge(false);
             nm.createNotificationChannel(ch);
         }
@@ -168,10 +261,12 @@ public class WakeService extends Service {
         Intent open = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         if (inCall) open.putExtra("openCall", true);
         PendingIntent pOpen = PendingIntent.getActivity(c, 41, open, fl);
+        boolean ready = me != null && "ready".equals(status);
         Notification.Builder b = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(c, CH) : new Notification.Builder(c);
         b.setSmallIcon(R.drawable.ic_stat).setOngoing(true).setShowWhen(false).setContentIntent(pOpen).setColor(0xFFDC2626)
-                .setContentTitle(inCall ? "Danav is listening" : "Danav")
-                .setContentText(inCall ? "Talk now — Danav can use your phone for you" : "Say \u201cHey Danav\u201d anytime");
+                .setContentTitle("Danav")
+                .setContentText(inCall ? "Talk now \u2014 Danav can use your phone for you"
+                        : (ready || holder ? "Ready \u00b7 Volume-Up \u00d73 to wake" : "Volume-Up \u00d73 to wake"));
         if (inCall) {
             PendingIntent pEnd = PendingIntent.getService(c, 42, new Intent(c, CallService.class).setAction(CallService.ACT_END), fl);
             b.addAction(new Notification.Action.Builder(null, "End", pEnd).build());
