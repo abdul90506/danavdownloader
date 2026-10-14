@@ -1,0 +1,12 @@
+# Gradle & Build caches
+.gradle/
+build/
+**/build/
+local.properties
+
+# System & Temp files
+.android/
+.config/
+.pki/
+.sudo_as_admin_successful
+*.log

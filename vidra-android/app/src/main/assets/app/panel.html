@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Danav panel</title>
+<link rel="stylesheet" href="app.css">
+<style>
+  html, body { background: transparent; }
+  .pscrim { position: fixed; inset: 0; background: rgba(17, 24, 39, .4); opacity: 0; transition: opacity .2s; }
+  body.in .pscrim { opacity: 1; }
+  .pnl { position: fixed; z-index: 30; background: var(--surface); color: var(--text); overflow-y: auto; overscroll-behavior: contain; }
+  #dl { left: 0; right: 0; bottom: 0; max-height: 88vh; border-radius: var(--r-xl) var(--r-xl) 0 0; padding: 0 var(--pad) calc(14px + var(--safe-b)); transform: translateY(100%); transition: transform .26s var(--ease); max-width: 620px; margin: 0 auto; }
+  body.in #dl { transform: none; }
+  .grip { width: 36px; height: 4px; border-radius: 2px; background: var(--line2); margin: 8px auto 0; }
+  .p-head { position: sticky; top: 0; z-index: 2; background: var(--surface); display: flex; align-items: center; gap: 10px; padding: 8px 0 10px; border-bottom: 1px solid var(--line); }
+  .p-head .p-ic { width: 34px; height: 34px; border-radius: var(--r-s); background: var(--primary-c); color: var(--primary); display: flex; align-items: center; justify-content: center; flex: none; }
+  .p-head .p-ic svg { width: 19px; height: 19px; }
+  .p-ht { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .p-ht b { font-size: 15.5px; font-weight: 700; }
+  .p-ht span { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #grab .results:not(:empty), #grab .loading, #grab .problem { margin-top: 4px; }
+  .streams { margin-top: 14px; }
+  .streams-h { display: flex; justify-content: space-between; align-items: center; font-size: 13.5px; font-weight: 700; margin: 0 0 4px; }
+  .st { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
+  .st + .st { border-top: 1px solid var(--line); }
+  .st-k { flex: none; min-width: 44px; height: 22px; padding: 0 6px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font: 600 10.5px/1 Roboto, system-ui, sans-serif; letter-spacing: .03em; background: var(--surface2); color: var(--text2); }
+  .st-k.m { background: var(--primary-c); color: var(--on-primary-c); }
+  .st-u { flex: 1; min-width: 0; font: 12px/1.35 ui-monospace, monospace; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .st .btn { flex: none; height: 34px; }
+  .st .btn.sq { width: 34px; }
+  .hint { margin-top: 12px; padding: 12px; border-radius: var(--r); background: var(--surface2); font-size: 13px; color: var(--text2); display: flex; gap: 10px; }
+  .hint svg { width: 19px; height: 19px; flex: none; margin-top: 1px; color: var(--muted); }
+  .playing { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ok); font-weight: 600; }
+  .playing i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); animation: blink 1.2s infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+  #ad { left: 8px; right: 8px; top: 0; padding: 2px var(--pad) 14px; border-radius: var(--r-l); border: 1px solid var(--line); transform: translateY(-8px); opacity: 0; transition: transform .2s var(--ease), opacity .15s; max-width: 560px; margin: 6px auto 0; max-height: 90vh; }
+  body.in #ad { transform: none; opacity: 1; }
+  .ad-site { display: flex; align-items: center; gap: 12px; padding: 12px 0 12px; }
+  .ad-site .ad-ic { width: 38px; height: 38px; }
+  .ad-st { flex: 1; min-width: 0; }
+  .ad-st b { display: block; font-size: 15.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ad-st span { font-size: 12.5px; color: var(--muted); }
+  .ad-stats { display: grid; grid-template-columns: 1fr 1fr; margin-top: 12px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .ad-stats div { padding: 10px 0; display: flex; flex-direction: column; }
+  .ad-stats div + div { border-left: 1px solid var(--line); padding-left: 14px; }
+  .ad-stats b { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
+  .ad-stats span { font-size: 12px; color: var(--muted); }
+  .ad-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0 0; }
+  .ad-row label { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: 1; font-size: 14px; flex-direction: row-reverse; }
+  .ad-foot { display: flex; gap: 8px; margin-top: 12px; }
+  .ad-foot .btn { flex: 1; }
+  #menu { right: 8px; top: 0; width: 264px; max-width: calc(100vw - 16px); border-radius: var(--r-l); border: 1px solid var(--line); padding: 4px 0; margin-top: 6px; transform-origin: top right; transform: scale(.96); opacity: 0; transition: transform .18s var(--ease), opacity .15s; }
+  body.in #menu { transform: none; opacity: 1; }
+  .m-top { display: grid; grid-template-columns: repeat(4, 1fr); padding: 0 4px 4px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+  .m-top .icon-btn { width: 100%; height: 46px; border-radius: var(--r-s); }
+  .mi { display: flex; align-items: center; gap: 14px; width: 100%; height: 46px; padding: 0 16px; text-align: left; font-size: 14px; transition: background .12s; }
+  .mi:active { background: var(--surface2); }
+  .mi svg { width: 20px; height: 20px; color: var(--text2); }
+  .mi .sp { flex: 1; }
+  .mi .switch { pointer-events: none; transform: scale(.85); margin-right: -6px; }
+  .msep { height: 1px; background: var(--line); margin: 4px 0; }
+  .toast { bottom: calc(24px + var(--safe-b)); }
+</style>
+</head>
+<body class="panel-page">
+<div class="pscrim" id="pscrim"></div>
+
+<section class="pnl" id="dl" hidden>
+  <div class="grip"></div>
+  <div class="p-head">
+    <span class="p-ic" data-i="download"></span>
+    <div class="p-ht"><b>Download from this page</b><span id="dlHost"></span></div>
+    <button class="icon-btn" data-close aria-label="Close"><span data-i="close"></span></button>
+  </div>
+  <div id="grab"></div>
+  <div class="streams" id="streams" hidden>
+    <div class="streams-h"><span id="streamsT">Detected while playing</span><span class="playing" id="playing" hidden><i></i>Playing</span></div>
+    <div id="streamList"></div>
+  </div>
+  <div class="hint" id="hint" hidden><span data-i="info"></span><span id="hintT"></span></div>
+</section>
+
+<section class="pnl" id="ad" hidden>
+  <div class="ad-site">
+    <span class="ad-ic" id="adIc"></span>
+    <div class="ad-st"><b id="adHost"></b><span id="adSub">Ad blocking level for this site</span></div>
+    <button class="icon-btn" data-close aria-label="Close"><span data-i="close"></span></button>
+  </div>
+  <div id="adSlider"></div>
+  <div class="ad-row">
+    <label><input type="checkbox" class="switch" id="adAll"><span>Use this level on every site</span></label>
+  </div>
+  <div class="ad-stats">
+    <div><b id="adPage">0</b><span>blocked on this page</span></div>
+    <div><b id="adTotal">0</b><span>blocked in total</span></div>
+  </div>
+  <div class="ad-foot">
+    <button class="btn" id="adReload"><span data-i="reload"></span>Reload page</button>
+    <button class="btn" id="adDefault" hidden>Use default</button>
+  </div>
+</section>
+
+<section class="pnl" id="menu" hidden>
+  <div class="m-top">
+    <button class="icon-btn" data-m="back" aria-label="Back"><span data-i="back"></span></button>
+    <button class="icon-btn" data-m="forward" id="mFwd" aria-label="Forward"><span data-i="fwd"></span></button>
+    <button class="icon-btn" data-m="reload" aria-label="Reload"><span data-i="reload"></span></button>
+    <button class="icon-btn" data-m="home" aria-label="Start page"><span data-i="home"></span></button>
+  </div>
+  <button class="mi" data-m="downloads"><span data-i="dlOff"></span><span class="sp">Downloads</span></button>
+  <button class="mi" data-m="desktop"><span data-i="desktop"></span><span class="sp">Desktop site</span><input type="checkbox" class="switch" id="mDesk" tabindex="-1"></button>
+  <button class="mi" data-m="fab"><span data-i="playCircle"></span><span class="sp">Floating download button</span><input type="checkbox" class="switch" id="mFab" tabindex="-1"></button>
+  <div class="msep"></div>
+  <button class="mi" data-m="copy"><span data-i="copy"></span><span class="sp">Copy link</span></button>
+  <button class="mi" data-m="share"><span data-i="share"></span><span class="sp">Share page</span></button>
+  <button class="mi" data-m="external"><span data-i="external"></span><span class="sp">Open in another browser</span></button>
+  <div class="msep"></div>
+  <button class="mi" data-m="clearData"><span data-i="clean"></span><span class="sp">Clear cache &amp; site data</span></button>
+</section>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="icons.js"></script>
+<script src="formats.js"></script>
+<script src="core.js"></script>
+<script src="panel.js"></script>
+</body>
+</html>

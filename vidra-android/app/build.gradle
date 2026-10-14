@@ -1,0 +1,79 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.dilhan.vidra'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.dilhan.vidra'
+        minSdk 24
+        targetSdk 34
+        versionCode 13
+        versionName '2.2.0'
+    }
+
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'arm64-v8a', 'armeabi-v7a'
+            universalApk false
+        }
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('vidra-release.jks')
+            storePassword 'vidra-dilhan'
+            keyAlias 'vidra'
+            keyPassword 'vidra-dilhan'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    packaging {
+        // yt-dlp's Python + ffmpeg ship as native libs that must be extracted to disk
+        jniLibs {
+            useLegacyPackaging true
+            pickFirsts += ['**/libc++_shared.so']
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+        coreLibraryDesugaringEnabled true
+    }
+    lint { checkReleaseBuilds false; abortOnError false }
+}
+
+dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+    implementation 'io.github.junkfood02.youtubedl-android:library:0.18.1'
+    implementation 'io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1'
+    implementation 'androidx.core:core:1.9.0'
+    implementation 'androidx.webkit:webkit:1.8.0'
+    implementation 'androidx.exifinterface:exifinterface:1.3.7'
+    // Danav AI voice calls (WebSocket)
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    def media3 = '1.3.1'
+    implementation "androidx.media3:media3-exoplayer:$media3"
+    implementation "androidx.media3:media3-datasource:$media3"
+    implementation "androidx.media3:media3-exoplayer-hls:$media3"
+    implementation "androidx.media3:media3-ui:$media3"
+    implementation "androidx.media3:media3-session:$media3"
+    // FFmpeg audio decoders (AC-3, E-AC-3, DTS, TrueHD, FLAC, ALAC, Opus, Vorbis…) for MKV & co.
+    implementation 'org.jellyfin.media3:media3-ffmpeg-decoder:1.3.1+2'
+    // libVLC: automatic fallback engine for files the phone's decoders can't handle (HEVC 10-bit, AV1, old codecs…)
+    implementation 'org.videolan.android:libvlc-all:3.6.0'
+    // "Hey Danav": offline wake-word listening (the Hindi voice model is downloaded on demand)
+    implementation('com.alphacephei:vosk-android:0.3.75') { exclude group: 'net.java.dev.jna' }
+    implementation 'net.java.dev.jna:jna:5.18.1@aar'
+}
