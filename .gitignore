@@ -10,3 +10,6 @@ local.properties
 .pki/
 .sudo_as_admin_successful
 *.log
+
+# Built APKs (large binaries — share them via Releases instead)
+*.apk
