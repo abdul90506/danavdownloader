@@ -45,9 +45,9 @@ public class WakeService extends Service {
     static final String MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-small-hi-0.22.zip";
     private static final String WORD = "दानव";
     private static final String GRAMMAR = "[\"हे दानव\", \"दानव\", \"[unk]\"]";
-    private static final float MIN_CONF = 0.62f;        // “हे दानव” — two clear words
-    private static final float MIN_CONF_SOLO = 0.78f;   // the bare name alone needs to be really clear (Dana, Daane, Dan were sneaking in)
-    private static final float MIN_CONF_MEDIA = 0.88f;  // while music / a video is playing through the speaker
+    private static final float MIN_CONF = 0.62f;        // a short call of the name — “दानव”, “हे दानव”
+    private static final float MIN_CONF_LONG = 0.85f;   // the name inside a longer sentence (must be very clear to count)
+    private static final float MIN_CONF_MEDIA = 0.82f;  // while music / a video is playing through the speaker
     /** Ignore everything for a while (a false trigger was dismissed, or a call just ended). */
     private static volatile long ignoreUntil;
 
@@ -260,16 +260,19 @@ public class WakeService extends Service {
         try {
             JSONArray ws = new JSONObject(json).optJSONArray("result");
             if (ws == null) return false;
-            boolean twoWords = false;
+            boolean called = false;                       // “hey / hai + danav”: a proper call
             double solo = 0;
             for (int i = 0; i < ws.length(); i++) {
                 JSONObject w = ws.getJSONObject(i);
                 String word = w.optString("word");
-                if ("हे".equals(word) || "है".equals(word)) twoWords = true;
-                if (WORD.equals(word)) solo = Math.max(solo, w.optDouble("conf", 0));
+                double conf = w.optDouble("conf", 0);
+                if ((WORD + " " + WORD).equals(word) && conf >= MIN_CONF) return true;   // the model gave the whole phrase
+                if ("हे".equals(word) || "है".equals(word) || "hey".equalsIgnoreCase(word)) { called = true; continue; }
+                if (WORD.equals(word)) solo = Math.max(solo, conf);
             }
             if (solo <= 0) return false;
-            float need = twoWords ? MIN_CONF : MIN_CONF_SOLO;
+            // a short utterance ("दानव" / "हे दानव") is a call; the name buried in a long sentence has to be crystal clear
+            float need = (called || ws.length() <= 3) ? MIN_CONF : MIN_CONF_LONG;
             if (mediaConf > 0) need = Math.max(need, mediaConf);
             return solo >= need;
         } catch (Exception ignored) {}
