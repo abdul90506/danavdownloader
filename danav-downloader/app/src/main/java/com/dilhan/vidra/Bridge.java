@@ -23,7 +23,7 @@ import java.util.List;
 
 /** window.Vidra.* — the downloader UI and the browser's download / ad-block panels. */
 final class Bridge {
-    static final int REQ_BROWSER = 11, REQ_PERM = 12, REQ_MEDIA = 13, REQ_DELETE = 14, REQ_VAULT_PICK = 15, REQ_VAULT_TREE = 16, REQ_VAULT_DEL = 17;
+    static final int REQ_BROWSER = 11, REQ_PERM = 12, REQ_MEDIA = 13, REQ_DELETE = 14, REQ_VAULT_PICK = 15, REQ_VAULT_TREE = 16, REQ_VAULT_DEL = 17, REQ_MIC = 19;
 
     interface Host {
         Activity activity();
@@ -432,6 +432,14 @@ final class Bridge {
     }
 
     // ------------------------------------------------------------------ music
+
+    /** Real spectrum of the music that is playing: on / off / mic (permission needed) / no. */
+    @JavascriptInterface public String spectrumSet(boolean on) { return Spectrum.enable(a, on); }
+    @JavascriptInterface public String spectrumState() { return Spectrum.running() ? "on" : Spectrum.enabled(a) ? "off" : "off"; }
+    @JavascriptInterface public String micPerm() {
+        return a.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED ? "granted" : "denied";
+    }
+    @JavascriptInterface public void requestMic() { ui(() -> a.requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_MIC)); }
 
     @JavascriptInterface public void music(String cmd, String json) {
         JSONObject o;

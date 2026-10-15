@@ -104,29 +104,3 @@ html.dark .det-play { background: rgba(24, 24, 27, .92); }
 html.dark select { background-color: var(--surface); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 
-/* ------------------------------------------------------------------ tools sidebar (3-line button on the right) */
-.dr-scrim { position: fixed; inset: 0; z-index: 87; background: rgba(9, 9, 11, .48); opacity: 0; pointer-events: none; transition: opacity .24s; }
-.dr-scrim.show { opacity: 1; pointer-events: auto; }
-.dr { position: fixed; top: 0; bottom: 0; right: 0; z-index: 88; width: min(86vw, 330px); background: var(--bg); color: var(--text); display: flex; flex-direction: column;
-  transform: translateX(102%); transition: transform .28s var(--ease); border-left: 1px solid var(--line); }
-.dr.show { transform: none; }
-.dr-h { display: flex; align-items: center; gap: 10px; padding: calc(14px + env(safe-area-inset-top, 0px)) var(--pad) 10px; border-bottom: 1px solid var(--line); }
-.dr-h .logo { width: 34px; height: 34px; border-radius: 8px; flex: none; }
-.dr-h .brand-t { flex: 1; min-width: 0; }
-.dr-h h1 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -.2px; }
-.dr-h .sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
-.dr-b { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 8px 10px calc(16px + var(--safe-b)); }
-.dr-t { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); padding: 14px 10px 6px; }
-.dr-g { display: flex; flex-direction: column; gap: 2px; }
-.dr-i { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 0 10px; border-radius: 12px; color: var(--text); text-align: left; transition: background .15s; }
-.dr-i:active { background: var(--surface2); }
-.dr-i .di { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; color: var(--text2); flex: none; }
-.dr-i .di svg { width: 21px; height: 21px; }
-.dr-i b { font-size: 14.5px; font-weight: 500; flex: 1; min-width: 0; }
-.dr-i .dr-s { font-size: 12px; color: var(--muted); max-width: 48%; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dr-i.on .di { color: var(--primary); }
-.dr-w { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 8px 6px 0; }
-.dr-w .wg { border: 1px solid var(--line); border-radius: 12px; padding: 10px; min-width: 0; }
-.dr-w .wg small { display: block; font-size: 11px; color: var(--muted); }
-.dr-w .wg b { display: block; font-size: 15px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dr-f { padding: 16px 12px 4px; font-size: 12px; color: var(--faint); }

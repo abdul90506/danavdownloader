@@ -408,7 +408,10 @@ public class PlayerActivity extends Activity {
                 showError(describe(e));
             }
             @Override public void onTracksChanged(@NonNull Tracks t) { checkTracks(t); }
-            @Override public void onRenderedFirstFrame() { if (awaitFrame) { h.removeCallbacks(revealVideo); h.postDelayed(revealVideo, 30); } }
+            @Override public void onRenderedFirstFrame() {
+                if (awaitFrame) { h.removeCallbacks(revealVideo); h.postDelayed(revealVideo, 30); }
+                firstFrame();                       // a waiting slide can swap to this video right now
+            }
             @Override public void onAudioSessionIdChanged(int id) { setupBoost(id); }
             @Override public void onRepeatModeChanged(int m) { updateRepeat(); }
         };
@@ -617,13 +620,12 @@ public class PlayerActivity extends Activity {
         LinearLayout lockB = action(R.drawable.ic_lock, "Lock", v -> setLocked(true));
         LinearLayout fitB = action(R.drawable.ic_aspect, "Fit", v -> cycleResize());
         fitText = (TextView) fitB.getChildAt(1);
-        LinearLayout audB = action(R.drawable.ic_audio, "Audio", v -> audioPanel());
         LinearLayout subB = action(R.drawable.ic_subs, "Subtitles", v -> subsPanel());
         LinearLayout queueB = action(R.drawable.ic_queue, "Playlist", v -> queuePanel());
         queueB.setTag("queue");
         nextAction = action(R.drawable.ic_next, "Next", v -> { if (player.hasNextMediaItem()) changeVideo(true); });
         nextBtn = (ImageView) nextAction.getChildAt(0);
-        for (View v : new View[]{speedB, lockB, fitB, audB, subB, queueB, nextAction}) actionRow.addView(v, new LinearLayout.LayoutParams(0, dp(52), 1));
+        for (View v : new View[]{speedB, lockB, fitB, subB, queueB, nextAction}) actionRow.addView(v, new LinearLayout.LayoutParams(0, dp(52), 1));
         bottomBox.addView(actionRow);
         // labels only when there's room (landscape / tablets); icons alone on narrow portrait screens
         actionRow.addOnLayoutChangeListener((v, l, t, r, b2, ol, ot, or, ob) -> {
@@ -1223,25 +1225,53 @@ public class PlayerActivity extends Activity {
         int W = Math.max(1, root.getWidth());
         if (!pagesOn || pagesForward != next) { releasePages(true); preparePages(next); }
         if (!pagesOn) { legacyChange(next); return; }              // no page available (e.g. the VLC engine)
-        final boolean wasReady = pagesOn;
+        final boolean barsWereOn = controlsShown;
+        showControls(false);                                       // the controls step aside for the slide…
         pager.animate().cancel();
         float left = W - Math.abs(pager.getTranslationX());
-        long dur = Math.max(140, Math.min(300, Math.round(300 * left / W)));
-        pager.animate().translationX(next ? -W : W).setDuration(dur + (wasReady ? 0 : 160)).setInterpolator(new android.view.animation.PathInterpolator(0.3f, 0f, 0.6f, 1f))
+        // one continuous ease-out over the rest of the distance — long enough to read, short enough to feel quick
+        long dur = Math.max(180, Math.min(340, Math.round(340 * left / W)));
+        pager.animate().translationX(next ? -W : W).setDuration(dur)
+                .setInterpolator(new android.view.animation.PathInterpolator(0.22f, 0.9f, 0.3f, 1f))
                 .withEndAction(() -> {
                     if (player == null) { releasePages(true); return; }
                     boolean play = player.getPlayWhenReady() || player.getPlaybackState() == Player.STATE_IDLE;
+                    expectFirstFrame = true;                       // swap only after the new video really draws
+                    h.removeCallbacks(swapPage);
+                    h.postDelayed(swapPage, 700);                  // safety net for engines without a frame callback
                     if (next) player.seekToNextMediaItem(); else player.seekToPreviousMediaItem();
                     if (player.getPlaybackState() == Player.STATE_IDLE) player.prepare();
                     if (play) player.play();
                     updateBigPlay();
-                    // let the main player settle on the new video, then swap in one frame — the neighbour page
-                    // keeps showing it in the meantime, so nothing flashes
-                    h.postDelayed(() -> { releasePages(true); pv.setAlpha(1f); }, 240);
+                    // let the player settle; the neighbour page keeps showing the new video in the meantime
+                    h.postDelayed(() -> { if (expectFirstFrame) commitSwap(barsWereOn); }, 220);
                 }).start();
     }
 
-    /** Animated move to the next / previous video (swipe and the Next button). */
+    /** True right after a slide: the page swap waits for the new video's first drawn frame. */
+    private boolean expectFirstFrame;
+
+    private final Runnable swapPage = new Runnable() {
+        @Override public void run() {
+            if (expectFirstFrame) commitSwap(true);
+        }
+    };
+
+    /** Swaps the glided page for the real one in a single frame (same picture, same place). */
+    private void commitSwap(boolean barsBack) {
+        if (!expectFirstFrame) return;
+        expectFirstFrame = false;
+        h.removeCallbacks(swapPage);
+        releasePages(true);
+        pv.setAlpha(1f);
+        if (barsBack) showControls(true);
+    }
+
+    /** The main player just drew a frame: if a slide is waiting for it, swap now — never a black gap. */
+    private void firstFrame() {
+        if (expectFirstFrame) commitSwap(controlsShown);
+    }
+
     private void changeVideo(boolean next) {
         if (player == null || !(next ? player.hasNextMediaItem() : player.hasPreviousMediaItem())) return;
         if (pageMode()) { slidePage(next); return; }

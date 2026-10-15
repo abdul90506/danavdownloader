@@ -32,10 +32,20 @@ public class MainActivity extends Activity implements Bridge.Host {
     private boolean visible;
     boolean isVisible() { return visible; }
 
-    /** Danav AI follows the phone's own light / dark setting. */
+    /** Settings → Appearance (theme / accent / text size) — kept here so JS reads it back on start. */
+    static android.content.SharedPreferences look(Context c) { return c.getSharedPreferences("look", Context.MODE_PRIVATE); }
+    static void saveLook(Context c, String theme, String accent, String size, boolean compact) {
+        look(c).edit().putString("theme", theme).putString("accent", accent).putString("size", size).putBoolean("compact", compact).apply();
+    }
+    /** System follows the phone's own light / dark setting. */
     static boolean isDark(Context c) {
+        String t = look(c).getString("theme", "system");
+        if ("dark".equals(t)) return true;
+        if ("light".equals(t)) return false;
         return (c.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
     }
+    static int textZoom(Context c) { String z = look(c).getString("size", "m"); return "s".equals(z) ? 90 : "l".equals(z) ? 115 : 100; }
+    void setTextZoom(int z) { if (web != null) web.getSettings().setTextZoom(z); }
 
     private boolean callFull;
     /** The call screen hides the status and navigation bars (swipe from the edge shows them for a moment). */
@@ -62,11 +72,14 @@ public class MainActivity extends Activity implements Bridge.Host {
         Window w = getWindow();
         w.setStatusBarColor(bg);
         w.setNavigationBarColor(bg);
+        // no divider and no contrast scrim above the phone's navigation strip: no thin line under the input
+        if (Build.VERSION.SDK_INT >= 28) w.setNavigationBarDividerColor(bg);
+        if (Build.VERSION.SDK_INT >= 29) { w.setNavigationBarContrastEnforced(false); w.setStatusBarContrastEnforced(false); }
         int flags = dark ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
         if (!dark && Build.VERSION.SDK_INT >= 27) flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
         w.getDecorView().setSystemUiVisibility(flags);
         if (callFull) applyBars();
-        if (web != null) web.setBackgroundColor(bg);
+        if (web != null) { web.setBackgroundColor(bg); web.getSettings().setTextZoom(textZoom(this)); }
     }
 
     @Override public void onConfigurationChanged(@androidx.annotation.NonNull Configuration cfg) {

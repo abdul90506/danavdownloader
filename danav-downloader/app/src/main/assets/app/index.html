@@ -69,7 +69,8 @@
     <div class="lib-bar">
       <div class="seg" id="vSeg"><button data-s="all" class="on">All videos</button><button data-s="folders">Folders</button></div>
       <div class="lib-tools">
-        <label class="search"><span data-i="search"></span><input id="vSearch" type="search" placeholder="Search videos" autocomplete="off"></label>
+        <label class="search" id="vSearchBox" hidden><span data-i="search"></span><input id="vSearch" type="search" placeholder="Search videos" autocomplete="off"><button class="icon-btn search-x" id="vSearchX" type="button" aria-label="Close search"><span data-i="close"></span></button></label>
+        <button class="icon-btn" id="vSearchBtn" aria-label="Search"><span data-i="search"></span></button>
         <button class="icon-btn" id="vSort" aria-label="Sort"><span data-i="sort"></span></button>
         <button class="icon-btn" id="vMode" aria-label="Layout"><span data-i="list"></span></button>
       </div>
@@ -84,9 +85,10 @@
   <!-- ============================================================ MUSIC -->
   <section class="view" id="view-music" hidden>
     <div class="lib-bar">
-      <div class="seg" id="mSeg"><button data-s="songs" class="on">Songs</button><button data-s="albums">Albums</button><button data-s="artists">Artists</button><button data-s="folders">Folders</button></div>
+      <div class="seg" id="mSeg"><button data-s="songs" class="on">Songs</button><button data-s="fav">Favorites</button><button data-s="albums">Albums</button><button data-s="artists">Artists</button><button data-s="folders">Folders</button></div>
       <div class="lib-tools">
-        <label class="search"><span data-i="search"></span><input id="mSearch" type="search" placeholder="Search music" autocomplete="off"></label>
+        <label class="search" id="mSearchBox" hidden><span data-i="search"></span><input id="mSearch" type="search" placeholder="Search music" autocomplete="off"><button class="icon-btn search-x" id="mSearchX" type="button" aria-label="Close search"><span data-i="close"></span></button></label>
+        <button class="icon-btn" id="mSearchBtn" aria-label="Search"><span data-i="search"></span></button>
         <button class="icon-btn" id="mSort" aria-label="Sort"><span data-i="sort"></span></button>
       </div>
     </div>
@@ -234,13 +236,13 @@
     <button class="icon-btn" id="npClose" aria-label="Close"><span data-i="expand"></span></button>
     <div class="np-h">Now playing<span id="npPos"></span></div>
     <div class="np-tr">
-      <button class="icon-btn" id="npFx" aria-label="Sound effects"><span data-i="eq"></span></button>
-      <button class="icon-btn" id="npQueue" aria-label="Queue"><span data-i="queue"></span></button>
+      <button class="icon-btn" id="npLyrics" aria-label="Lyrics"><span data-i="subs"></span></button>
+      <button class="icon-btn" id="npFav" aria-label="Favourite"><span data-i="star"></span></button>
       <button class="icon-btn" id="npMore" aria-label="More options"><span data-i="more"></span></button>
     </div>
   </div>
   <div class="np-body">
-    <div class="np-stage" id="npStage"><div class="np-art" id="npArt"></div></div>
+    <div class="np-stage" id="npStage"><div class="np-art" id="npArt"><canvas class="np-spec" id="npSpec" hidden></canvas><button class="np-spec-on" id="npSpecOn" hidden><span data-i="wave"></span>Show the music</button></div></div>
     <div class="np-info">
       <div class="np-t" id="npT"></div>
       <div class="np-a" id="npA"></div>
@@ -257,6 +259,17 @@
       <div class="np-tags" id="npTags"></div>
     </div>
   </div>
+
+  <!-- lyrics: paste the words once, they stay with the song -->
+  <section class="np-lyr" id="npLyr" hidden>
+    <div class="np-lyr-top">
+      <button class="icon-btn" id="npLyrBack" aria-label="Back"><span data-i="back"></span></button>
+      <div class="np-lyr-h"><b>Lyrics</b><span id="npLyrT"></span></div>
+      <button class="icon-btn" id="npLyrEdit" aria-label="Edit lyrics"><span data-i="editSquare"></span></button>
+    </div>
+    <div class="np-lyr-b" id="npLyrBody"></div>
+  </section>
+
 </section>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>

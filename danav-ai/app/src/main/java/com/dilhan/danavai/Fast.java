@@ -139,16 +139,33 @@ final class Fast {
         return null;
     }
 
-    /** Runs the local tool (if any) and returns the honest result text for the model-free reply. */
+    /**
+     * Runs the local tool (if any) and answers with what the phone actually reported.
+     *
+     * This used to answer with a cheerful canned line ("Theek, X ko message bhej diya.") whenever the
+     * result didn't match a small list of failure words — so "no contact found" or "the app did not come
+     * to the front" came back to the user as a fake success. Now the real text is always used, and a
+     * failure is a failure.
+     */
     static String run(Context c, Hit h) {
         if (h.tool == null) return h.reply;
         try {
             JSONObject args = new JSONObject(h.json);
             Phone.Out out = Phone.run(c, h.tool, args);
             String text = out.text == null ? "" : out.text;
-            boolean bad = text.toLowerCase(Locale.ROOT).matches(".*(couldn'?t|failed|not on the screen|isn'?t|no text|permission|off\\.).*");
-            return bad ? text : h.reply;
-        } catch (Throwable e) { return h.reply; }
+            if (text.trim().isEmpty()) return h.reply;
+            return brief(text);
+        } catch (Throwable e) {
+            String m = e.getMessage();
+            return "I couldn't do that: " + e.getClass().getSimpleName() + (m == null || m.isEmpty() ? "" : " — " + m);
+        }
+    }
+
+    /** The screen dump is useful to the model, not to a chat bubble — keep the answer itself short. */
+    private static String brief(String t) {
+        int i = t.indexOf("\nScreen now:");
+        String cut = i > 0 ? t.substring(0, i) : t;
+        return cut.trim();
     }
 
     // ------------------------------------------------------------------ helpers

@@ -45,9 +45,14 @@ public class MainActivity extends Activity implements Bridge.Host {
     void applyTheme() {
         boolean dark = isDark(this);
         int bg = dark ? Color.parseColor("#0f0f10") : Color.WHITE;
+        // the phone's own navigation strip is painted in the same colour as the app's bottom bar, and its
+        // divider / contrast scrim is switched off, so no thin line can show up under Home / Videos / Music
+        int bar = dark ? Color.parseColor("#18181b") : Color.WHITE;
         Window w = getWindow();
         w.setStatusBarColor(bg);
-        w.setNavigationBarColor(bg);
+        w.setNavigationBarColor(bar);
+        if (Build.VERSION.SDK_INT >= 28) w.setNavigationBarDividerColor(bar);
+        if (Build.VERSION.SDK_INT >= 29) { w.setNavigationBarContrastEnforced(false); w.setStatusBarContrastEnforced(false); }
         int flags = dark ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
         if (!dark && Build.VERSION.SDK_INT >= 27) flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
         w.getDecorView().setSystemUiVisibility(flags);
@@ -192,6 +197,10 @@ public class MainActivity extends Activity implements Bridge.Host {
 
     @Override public void onRequestPermissionsResult(int req, String[] perms, int[] results) {
         super.onRequestPermissionsResult(req, perms, results);
+        if (req == Bridge.REQ_MIC) {
+            boolean ok = results.length > 0 && results[0] == 0;
+            send("mic", "{\"ok\":" + ok + "}");
+        }
         if (req == Bridge.REQ_MEDIA) {
             boolean denyForever = false;
             for (int i = 0; i < perms.length; i++) if (results[i] != 0 && !shouldShowRequestPermissionRationale(perms[i])) denyForever = true;

@@ -242,9 +242,8 @@
     root.innerHTML = `
       <div class="ai-mid">
         <div class="ai-bar">
-          <button class="icon-btn" data-a="side" aria-label="Chats">${ic('history')}</button>
+          <button class="icon-btn" data-a="side" aria-label="Menu">${MENU}</button>
           <div class="ai-bar-t" id="aiTitle"></div>
-          <button class="icon-btn" data-a="tools" aria-label="Tools and widgets">${MENU}</button>
           <button class="icon-btn" data-a="new" aria-label="New chat">${ic('editSquare')}</button>
         </div>
         <div class="ai-scroll" id="aiScroll"><div class="ai-empty" id="aiEmpty">${LOGO}</div><div class="ai-thread" id="aiThread"></div></div>
@@ -267,12 +266,16 @@
         <div class="side-top"><label class="side-search">${ic('search')}<input id="aiFind" placeholder="Search chats" autocomplete="off"></label></div>
         <div class="side-nav">
           <button data-a="new">${ic('editSquare')}<span>New chat</span></button>
-          <button data-a="voices">${ic('voice')}<span>Voice</span></button>
-          <button data-a="phone">${ic('touchApp')}<span>Phone control</span></button>
-          <button data-a="tools">${ic('tune')}<span>Tools &amp; widgets</span></button>
+          <button data-a="call">${ic('call')}<span>Voice call</span><i class="side-v" id="sideCall"></i></button>
+          <button data-a="phone">${ic('touchApp')}<span>Phone control</span><i class="side-v" id="sidePhone"></i></button>
+          <button data-a="memory">${ic('bulb')}<span>What Danav remembers</span><i class="side-v" id="sideMem"></i></button>
+          <button data-a="voices">${ic('voice')}<span>Voice</span><i class="side-v" id="sideVoice"></i></button>
         </div>
         <div class="side-list" id="aiList"></div>
-        <div class="side-foot">${LOGO}<div><b>Danav AI</b><br>Developed by Dilhan</div></div>
+        <div class="side-set">
+          <button data-a="settings">${ic('settings')}<span>Settings</span><i class="side-v" id="sideLook"></i></button>
+        </div>
+        <div class="side-foot">${LOGO}<div><b>Danav AI</b> <span id="sideVer"></span><br>Developed by Dilhan</div></div>
       </aside>`;
     document.body.appendChild(root);
     root.addEventListener('click', onClick);
@@ -425,6 +428,12 @@
     const inp = $('#aiIn', root), text = inp.value.trim();
     if (pend.some((p) => p.busy)) { V.toast('Wait for the files to finish adding'); return; }
     if (!text && !pend.length) return;
+    // Danav is on a call the user placed: what they type is said out loud on that call
+    if (text && !pend.length && V.call('liveSay', text)) {
+      inp.value = ''; grow(); syncGo();
+      V.toast('Said it on the call');
+      return;
+    }
     if (!cur) { cur = { id: uid(), title: '', at: Date.now(), messages: [] }; chats.unshift(cur); }
     const last = cur.messages[cur.messages.length - 1];
     if (last && last.role === 'model' && last.st === 'error') cur.messages.pop();
@@ -530,18 +539,47 @@
 
   // ---------------------------------------------------------------- popovers
   let pop = null;
-  function closePop() { if (!pop) return false; pop.remove(); pop.veil.remove(); pop = null; return true; }
+  function closePop() { if (!pop) return false; if (pop.cleanup) pop.cleanup(); pop.remove(); pop.veil.remove(); pop = null; return true; }
   function openPop(anchor, html, onPick, above, cls) {
     closePop();
     const veil = document.createElement('div'); veil.className = 'ai-veil';
     const p = document.createElement('div'); p.className = 'ai-pop ' + (cls || ''); p.innerHTML = html;
     document.body.append(veil, p);
-    const r = anchor.getBoundingClientRect(), pw = p.offsetWidth, ph = p.offsetHeight;
-    let left = Math.min(Math.max(8, r.left), innerWidth - pw - 8);
-    if (above !== false && r.top - ph - 8 > 8) { p.style.top = (r.top - ph - 8) + 'px'; p.style.transformOrigin = 'bottom left'; } else { p.style.top = Math.min(r.bottom + 6, innerHeight - ph - 8) + 'px'; p.style.transformOrigin = 'top right'; left = Math.min(Math.max(8, r.right - pw), innerWidth - pw - 8); }
-    p.style.left = left + 'px';
+    // where is it now? follow the anchor while the screen changes (keyboard opening / closing, scrolling)
+    const place = () => {
+      if (!p.isConnected) return;
+      const r = anchor.getBoundingClientRect(), pw = p.offsetWidth, ph = p.offsetHeight;
+      // the visible part of the page: the keyboard takes the bottom away, so measure against that
+      const vv = window.visualViewport;
+      const vh = vv ? vv.height : innerHeight, vw = vv ? vv.width : innerWidth, vtop = vv ? vv.offsetTop : 0, vleft = vv ? vv.offsetLeft : 0;
+      let left = Math.min(Math.max(vleft + 8, r.left), vleft + vw - pw - 8);
+      if (above !== false && r.top - ph - 8 > vtop + 8) { p.style.top = (r.top - ph - 8) + 'px'; p.style.transformOrigin = 'bottom left'; }
+      else {
+        p.style.top = Math.min(r.bottom + 6, vtop + vh - ph - 8) + 'px';
+        p.style.transformOrigin = 'top right';
+        left = Math.min(Math.max(vleft + 8, r.right - pw), vleft + vw - pw - 8);
+      }
+      p.style.left = left + 'px';
+    };
+    place();
+    // the input keeps its text and gets focus back the moment you pick something, so the keyboard
+    // stays where it was instead of the menu hanging in the air
+    const wasIn = document.activeElement === $('#aiIn', root);
+    const onMove = () => place();
+    window.addEventListener('resize', onMove);
+    window.addEventListener('scroll', onMove, true);
+    if (window.visualViewport) { visualViewport.addEventListener('resize', onMove); visualViewport.addEventListener('scroll', onMove); }
+    p.cleanup = () => {
+      window.removeEventListener('resize', onMove);
+      window.removeEventListener('scroll', onMove, true);
+      if (window.visualViewport) { visualViewport.removeEventListener('resize', onMove); visualViewport.removeEventListener('scroll', onMove); }
+    };
     veil.onclick = closePop;
-    p.onclick = (e) => { const b = e.target.closest('[data-p]'); if (b) { closePop(); onPick(b.dataset.p); } };
+    p.onclick = (e) => {
+      const b = e.target.closest('[data-p]'); if (!b) return;
+      closePop(); onPick(b.dataset.p);
+      if (wasIn) { const t = $('#aiIn', root); if (t) t.focus(); }
+    };
     pop = p; pop.veil = veil;
   }
 
@@ -570,10 +608,22 @@
     $('#aiList', root).innerHTML = h || `<div class="side-empty">${q ? 'No chats found' : 'Your chats will show up here'}</div>`;
   }
   let sideOpen = false;
+  function renderSide() {
+    if (!root) return;
+    const st = phoneState(), w = st.wake || {}, l = (() => { try { return JSON.parse(V.call('liveInfo') || '{}'); } catch (e) { return {}; } })();
+    const set = (id, t) => { const el = $('#' + id, root); if (el) el.textContent = t; };
+    set('sideCall', l.active ? (l.muted ? 'Muted' : 'On a call') : '');
+    set('sidePhone', st.access ? (st.overlay ? 'Ready' : 'Overlay needed') : 'Off');
+    set('sideMem', (st.memory || []).length ? (st.memory || []).length + ' notes' : '');
+    set('sideVoice', localStorage.getItem('danav.ai.voice') || 'Puck');
+    set('sideLook', V.setLabel() + (V.SET.compact ? ' · Compact' : ''));
+    set('sideVer', V.state.version ? 'v' + V.state.version : '');
+  }
   function side(on) {
     sideOpen = on;
     if (on) { renderList(); $('#aiIn', root).blur(); }
     $('#aiSide', root).classList.toggle('show', on);
+    if (on) renderSide();
     $('#aiScrim', root).classList.toggle('show', on);
   }
   function openChat(id) {
@@ -742,6 +792,19 @@
       else if (a === 'wake') toggleWake(st);
       else if (a === 'memDel') V.call('memoryForget', b.dataset.id);
       else if (a === 'memClear') { if (await V.confirm('Forget everything?', 'All the personal notes Danav saved about you will be deleted.', 'Forget', true)) V.call('memoryClear'); }
+      else if (a === 'prove') {
+        const t = $('#pcProve', p);
+        if (t) t.textContent = 'Testing… Danav is opening Settings now';
+        let o = {};
+        try { o = JSON.parse((await V.callAsync('phoneProve')) || '{}'); } catch (e) { o = {}; }
+        if (t) {
+          t.textContent = o.ok
+            ? 'Working — Danav opened ' + (o.now || 'the Settings app') + ' and came back here in ' + (o.ms || 0) + ' ms. Screen read: ' + (o.read || 0) + ' characters'
+              + (o.shot === 1 ? ' · screenshot ok' : o.shot === 0 ? ' · screenshot NOT available on this phone' : ' · screenshot needs Android 11 or newer')
+            : 'Not working — ' + (o.step || o.said || 'the phone gave no answer') + (o.fix ? ' · ' + o.fix : '');
+          t.style.userSelect = 'text'; t.style.webkitUserSelect = 'text';
+        }
+      }
       else if (a === 'ask') {
         const w = b.dataset.w;
         if (w === 'access' && st.sdk >= 33) V.toast('Open “Danav AI phone control” and turn it on');
@@ -749,6 +812,67 @@
       }
     };
   }
+  function settingsPage() {
+    if (page && page.classList.contains('set')) { closePage(); return; }
+    const w = phoneState().wake || {};
+    const p = document.createElement('div'); p.className = 'ai-page set';
+    p.innerHTML = `<div class="ai-page-h"><button class="icon-btn" data-v="back" aria-label="Back">${ic('back')}</button><h3>Settings</h3></div>
+      <div class="ai-page-b">
+        <div class="sub-h">Theme</div>
+        <div class="opts3" id="setTheme">${[['system', 'System', 'contrast'], ['light', 'Light', 'light'], ['dark', 'Dark', 'dark']]
+          .map(([k, n, i]) => `<button data-lt="${k}" class="${V.SET.theme === k ? 'on' : ''}">${ic(i)}${n}</button>`).join('')}</div>
+        <div class="sub-h">Accent</div>
+        <div class="swatches" id="setAccent">${V.ACCENTS.map(([k, n, c]) => `<button data-la="${k}" style="--sw:${c}" aria-label="${n}" title="${n}" class="${(V.SET.accent || 'red') === k ? 'on' : ''}"><i></i></button>`).join('')}</div>
+        <div class="sub-h">Text size</div>
+        <div class="opts3" id="setSize">${[['s', 'Small', 's'], ['m', 'Normal', 'm'], ['l', 'Large', 'l']]
+          .map(([k, n, c]) => `<button data-ls="${k}" class="${(V.SET.size || 'm') === k ? 'on' : ''}"><i class="aa ${c}">A</i>${n}</button>`).join('')}</div>
+        <div class="lk-row"><div class="lk-t"><b>Compact</b><small>Tighter rows and close-packed messages — more on the screen at once.</small></div><button class="lk-sw${V.SET.compact ? ' on' : ''}" data-lc="1" role="switch" aria-checked="${V.SET.compact ? 'true' : 'false'}" aria-label="Compact"><i></i></button></div>
+        <div class="sub-h">Shortcut</div>
+        <div class="lk-row"><div class="lk-t"><b>Volume-Up ×3 anywhere</b><small id="setWakeT">${esc(w.error && !w.running ? w.error : w.on ? (w.status === 'call' ? 'On — in a call now' : 'On — ready anywhere') : 'Off')}</small></div><button class="lk-sw${w.on ? ' on' : ''}" id="setWake" role="switch" aria-checked="${w.on ? 'true' : 'false'}" aria-label="Volume-Up shortcut"><i></i></button></div>
+        <div class="sub-h">Danav AI</div>
+        <div class="lk-row"><div class="lk-t"><b>Test Danav AI</b><small id="setTest">Checks the connection and tells you the real reason if it isn't working</small></div><button class="lk-go" data-test="1" aria-label="Test">${ic('bolt')}</button></div>
+        <div class="lk-row"><div class="lk-t"><b>App info</b><small id="setVer">${V.state.version ? 'Version ' + esc(V.state.version) : 'Version'} · opens your phone's app settings</small></div><button class="lk-go" data-appinfo="1" aria-label="App info">${ic('chev')}</button></div>
+        <p class="v-note">System follows your phone's own light / dark setting. The accent colour is used for the buttons, the circle and the highlights.</p>
+        <p class="v-note">Danav AI keeps everything on this phone — chats, memory, voices and this look. Nothing is uploaded.</p>
+      </div>`;
+    document.body.appendChild(p); page = p;
+    requestAnimationFrame(() => p.classList.add('show'));
+    p.onclick = async (e) => {
+      const b = e.target.closest('[data-v],[data-lt],[data-la],[data-ls],[data-lc],[data-wake],[data-appinfo],[data-test]'); if (!b) return;
+      if (b.dataset.v === 'back') { closePage(); return; }
+      if (b.dataset.lt) { V.setLook({ theme: b.dataset.lt }); p.querySelectorAll('#setTheme button').forEach((x) => x.classList.toggle('on', x === b)); }
+      else if (b.dataset.la) { V.setLook({ accent: b.dataset.la }); p.querySelectorAll('#setAccent button').forEach((x) => x.classList.toggle('on', x === b)); }
+      else if (b.dataset.ls) { V.setLook({ size: b.dataset.ls }); p.querySelectorAll('#setSize button').forEach((x) => x.classList.toggle('on', x === b)); }
+      else if (b.dataset.lc) { V.setLook({ compact: !V.SET.compact }); b.classList.toggle('on', !!V.SET.compact); b.setAttribute('aria-checked', V.SET.compact ? 'true' : 'false'); }
+      else if (b.dataset.appinfo) V.call('openAppSettings');
+      else if (b.dataset.test) {
+        const t = p.querySelector('#setTest');
+        if (t) t.textContent = 'Checking…';
+        let o = {}, raw = '';
+        try {
+          raw = (await Promise.race([V.callAsync('testApi'), new Promise((r) => setTimeout(() => r(''), 30000))])) || '';
+          o = JSON.parse(raw || '{}');
+        } catch (err) { o = {}; }
+        if (t) {
+          t.textContent = o.ok
+            ? 'Working — answered in ' + o.ms + ' ms · ' + (o.model || 'ok') + (o.why ? ' · ' + o.why : '')
+            : (o.why ? 'Not working — ' + o.why + (o.code ? ' · HTTP ' + o.code : '')
+                     : (raw ? 'Not working — ' + String(raw).slice(0, 300) : 'No reply from the app in 30 s (the request thread did not come back)'));
+          t.style.userSelect = 'text'; t.style.webkitUserSelect = 'text';
+        }
+      }
+      renderSide();
+    };
+    const sw = p.querySelector('#setWake');
+    if (sw) sw.onclick = async () => {
+      await toggleWake(phoneState());
+      const nw = phoneState().wake || {};
+      sw.classList.toggle('on', !!nw.on); sw.setAttribute('aria-checked', nw.on ? 'true' : 'false');
+      const t = p.querySelector('#setWakeT');
+      if (t) t.textContent = nw.error && !nw.running ? nw.error : nw.on ? (nw.status === 'call' ? 'On — in a call now' : 'On — ready anywhere') : 'Off';
+    };
+  }
+
   async function toggleWake(st) {
     const w = st.wake || {};
     if (w.on) { V.call('wakeSet', false); renderPhone(); return; }
@@ -776,7 +900,9 @@
       <div class="sub-h">Permissions</div>
       ${row('accessibility', 'Phone control', 'Lets Danav open apps, tap, type and read the screen when you ask', st.access, 'access',
         st.access || st.sdk < 33 ? '' : `<small class="pc-hint">Setting greyed out or “restricted”? Open <a data-v="ask" data-w="appinfo">App info</a> › ⋮ › Allow restricted settings, then try again.</small>`)}
-      ${row('layers', 'Show over other apps', 'The small Danav circle while you use other apps', st.overlay, 'overlay')}
+      ${row('layers', 'Show over other apps', 'The small Danav circle while you use other apps — and it lets Danav open other apps in the background', st.overlay, 'overlay')}
+      ${row('apps', 'Open other apps', st.apps ? 'Danav can bring apps to the front and take you to the right screen' : esc(st.why || 'Turn on Phone control above (or “Show over other apps”): Android blocks background apps from opening other apps without it'), st.apps, st.access ? 'overlay' : 'access')}
+      <div class="lk-row"><div class="lk-t"><b>Test phone control</b><small id="pcProve">Opens Settings for a moment and tells you honestly whether Danav really got it on screen — then comes back here.</small></div><button class="lk-go" data-v="prove" aria-label="Test phone control">${ic('bolt')}</button></div>
       ${row('contacts', 'Contacts', 'Message and call people by name', st.contacts, 'contacts')}
       ${row('call', 'Phone calls', 'Call directly without opening the dialer', st.calls, 'calls')}
       ${row('mic', 'Microphone', 'Talk to Danav', st.mic, 'mic')}
@@ -788,8 +914,8 @@
       <p class="v-note">Danav acts on your phone only when you ask it. Nothing runs on its own in the background — the circle appears when you press Volume-Up three times (or start a call yourself).</p>`;
   }
   V.on('phone', renderPhone);
-  V.on('wake', () => renderPhone());
-  V.on('resume', () => { renderPhone(); adoptCall(); });
+  V.on('wake', () => { renderPhone(); renderSide(); });
+  V.on('resume', () => { renderPhone(); renderSide(); adoptCall(); });
   // a call started outside the page (Hey Danav while the app was closed / in the background) shows up minimized
   function adoptCall() {
     if (call || !window.Vidra || !window.Vidra.liveInfo) return;
@@ -841,7 +967,7 @@
     document.body.appendChild(bub);
     call = { el, bub, cv: el.querySelector('.call-cv'), ocv: el.querySelector('.call-orb'), bcv: bub.querySelector('canvas'), vid: el.querySelector('.call-vid'),
       m: new Float32Array(16), a: new Float32Array(16), sm: new Float32Array(16), sa: new Float32Array(16),
-      st: 'connecting', t0: 0, muted: false, out: 'speaker', cc, cap: '', who: '', rot: 0, run: true, timer: 0, min: false,
+      st: 'connecting', t0: 0, muted: false, out: 'speaker', cc, cap: '', pre: '', who: '', rot: 0, run: true, timer: 0, min: false,
       cam: false, facing: 'user', stream: null, frameT: 0, screen: false, screenAsk: false };
     el.onclick = (e) => {
       const b = e.target.closest('[data-c]'); if (!b) return;
@@ -972,7 +1098,8 @@
     const t = call.t0 ? fmt((Date.now() - call.t0) / 1000) : '';
     const s = call.st;
     el.textContent = s === 'connecting' ? 'Connecting…' : s === 'reconnecting' ? 'Reconnecting…' : s === 'error' ? (msg || call.err || 'Call failed')
-      : (call.muted ? 'Muted' : s === 'speaking' ? 'Speaking' : 'Listening') + (t ? ' · ' + t : '');
+      : s === 'bridge' ? 'On the call — Danav is talking for you' + (t ? ' · ' + t : '')
+        : (call.muted ? 'Muted' : s === 'speaking' ? 'Speaking' : 'Listening') + (t ? ' · ' + t : '');
   }
   function endCall() {
     if (!call) return;
@@ -1006,12 +1133,20 @@
       return;
     }
     if (e.t === 'cap') {
-      if (call.who !== e.who) { call.cap = ''; call.who = e.who; }
+      if (call.who !== e.who) { call.cap = ''; call.who = e.who; call.pre = ''; }
       call.cap = (call.cap + e.text).replace(/\s+/g, ' ').slice(-240);
-      const box = $('#callCap'); if (box) { box.classList.toggle('you', e.who === 'you'); box.firstChild.textContent = call.cap.trim(); }
+      if (!(call.pre && call.pre.length > call.cap.length)) {
+        const box = $('#callCap'); if (box) { box.classList.toggle('you', e.who === 'you'); box.firstChild.textContent = call.cap.trim(); }
+      }
       return;
     }
-    if (e.t === 'turn') { call.who = ''; }
+    if (e.t === 'hear') {                       // words the call is hearing right now, before the sentence is finished
+      call.who = 'you';
+      call.pre = String(e.text || '').replace(/\s+/g, ' ').slice(-240);
+      const box = $('#callCap'); if (box) { box.classList.add('you'); box.firstChild.textContent = call.pre.trim(); }
+      return;
+    }
+    if (e.t === 'turn') { call.who = ''; call.pre = ''; }
   });
 
   function fit(cv) {
@@ -1121,12 +1256,13 @@
     const b = e.target.closest('[data-a]'); if (!b) return;
     const a = b.dataset.a;
     if (a === 'side') side(true);
-    else if (a === 'tools') { side(false); setTimeout(() => window.VDrawer && VDrawer.open(), 120); }
     else if (a === 'sideClose') side(false);
     else if (a === 'new') newChat();
     else if (a === 'down') scrollEnd(true);
     else if (a === 'voices') voicesPage();
-    else if (a === 'phone') phonePage();
+    else if (a === 'phone' || a === 'memory') phonePage();
+    else if (a === 'call') { side(false); if (call) restoreCall(); else startCall(); }
+    else if (a === 'settings') { side(false); settingsPage(); }
     else if (a === 'go') { const m = b.dataset.m; if (m === 'stop') stop(); else if (m === 'send') send(); else startCall(); }
     else if (a === 'attach') openPop(b, `<button data-p="image">${ic('image')}<span class="t">Photos</span></button><button data-p="file">${ic('attach')}<span class="t">Files</span></button>`, pick);
     else if (a === 'level') openPop(b, LEVELS.map((l) => `<button data-p="${l.id}" class="${l.id === level ? 'on' : ''}">${ic('brain')}<span class="t">${l.name}</span>${ic('check', 'ck')}</button>`).join(''), (id) => { level = id; localStorage.setItem(LS.level, id); renderLevel(); }, true, 'small');

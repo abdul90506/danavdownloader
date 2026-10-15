@@ -121,6 +121,7 @@ final class MusicHub {
                     .put("dur", dur > 0 ? dur : meta.optLong("dur", 0))
                     .put("shuffle", c.getShuffleModeEnabled()).put("repeat", c.getRepeatMode())
                     .put("speed", c.getPlaybackParameters().speed).put("fx", SoundFx.cur)
+                    .put("mix", SoundFx.mixJson()).put("spec", Spectrum.running())
                     .put("sleep", sleepEnd ? -1 : sleepAt > 0 ? Math.max(0, sleepAt - SystemClock.elapsedRealtime()) : 0)
                     .put("error", lastError);
         } catch (Exception ignored) {}
@@ -206,6 +207,8 @@ final class MusicHub {
                 case "repeat": ctl.setRepeatMode(a.optInt("mode") % 3); break;
                 case "speed": SoundFx.load(c); ctl.setPlaybackParameters(new PlaybackParameters((float) a.optDouble("v", 1), SoundFx.pitch())); break;
                 case "fx": { String w = SoundFx.apply(c, a.optString("id", "off")); if (!w.isEmpty()) emit("musicFx", "{\"warn\":" + JSONObject.quote(w) + "}"); break; }
+                case "mix": { String w = SoundFx.setMix(c, a.optString("name"), a.optInt("v")); push(); if (!w.isEmpty()) emit("musicFx", "{\"warn\":" + JSONObject.quote(w) + "}"); break; }
+                case "mixReset": SoundFx.resetMix(c); push(); break;
                 case "sleep": {
                     long min = a.optLong("min");
                     sleepEnd = min < 0;
@@ -216,6 +219,16 @@ final class MusicHub {
             }
             push();
         });
+    }
+
+    /** One FFT frame of the music that is playing right now (48 bars, 0…1) — drawn by the player's spectrum. */
+    static void spectrum(JSONArray bands, float peak) {
+        try { emit("spectrum", new JSONObject().put("b", bands).put("p", peak).toString()); } catch (Exception ignored) {}
+    }
+
+    static void spectrumFailed(String why) {
+        try { emit("musicFx", new JSONObject().put("warn", "The spectrum isn't available here (" + why + ")").toString()); } catch (Exception ignored) {}
+        emit("spectrumOff", "{}");
     }
 
     /** Pause music when the video player starts. */

@@ -54,6 +54,8 @@ public class DanavAccess extends AccessibilityService {
 
     /** Elements of the last read, so "tap 7" means exactly what the AI saw. */
     private final List<AccessibilityNodeInfo> last = new ArrayList<>();
+    /** What each numbered item said when it was read — so a number can be recovered if the screen moved on. */
+    private final List<String> lastLabels = new ArrayList<>();
 
     /** The window the user sees (skips our own floating bubble). */
     AccessibilityNodeInfo root() {
@@ -88,10 +90,14 @@ public class DanavAccess extends AccessibilityService {
         } catch (Exception e) { return pkg; }
     }
 
+    private String lastRead = "";                 // what the screen looked like last time
+    private int sameReads;                        // how many times in a row it looked the same
+
     /** A compact, numbered list of what's visible: the AI uses the numbers with tap / type_text. */
     synchronized String read() {
         AccessibilityNodeInfo r = root();
         last.clear();
+        lastLabels.clear();
         if (r == null) return "Screen can't be read right now.";
         StringBuilder sb = new StringBuilder();
         String p = r.getPackageName() == null ? "" : r.getPackageName().toString();
@@ -99,8 +105,22 @@ public class DanavAccess extends AccessibilityService {
         walk(r, sb, 0);
         AccessibilityNodeInfo f = r.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
         if (f != null && f.isEditable()) sb.append("Keyboard is open on: ").append(label(f)).append('\n');
-        if (last.isEmpty()) sb.append("(nothing readable — the app may draw its own UI; use a screenshot to look)\n");
-        return sb.toString();
+        if (last.isEmpty()) sb.append("(nothing readable — the app draws its own UI; call see_screen to look at the picture)\n");
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        sb.append("Screen: ").append(dm.widthPixels).append('x').append(dm.heightPixels)
+          .append(" — tap_xy takes fractions (0-1) or percentages, e.g. x=0.5 y=0.8\n");
+        String body = sb.toString();
+        // If the screen is exactly the same as the last look, the model has to know: its last tap/scroll did
+        // nothing. Without this it kept repeating the same action and reporting success.
+        if (body.equals(lastRead)) {
+            sameReads++;
+            if (sameReads >= 2)
+                body = "[The screen has NOT changed since your last look — the previous step did nothing. Try something different.]\n" + body;
+        } else {
+            sameReads = 0;
+            lastRead = body;
+        }
+        return body;
     }
 
     private void walk(AccessibilityNodeInfo n, StringBuilder sb, int depth) {
@@ -111,6 +131,7 @@ public class DanavAccess extends AccessibilityService {
         if (!lab.isEmpty() || n.isEditable() || (act && n.isScrollable())) {
             int i = last.size();
             last.add(n);
+            lastLabels.add(!lab.isEmpty() ? lab : full(n));
             sb.append('[').append(i).append("] ").append(kind(n));
             if (!lab.isEmpty()) sb.append(" \"").append(lab).append('"');
             if (n.isCheckable()) sb.append(n.isChecked() ? " (on)" : " (off)");
@@ -158,7 +179,21 @@ public class DanavAccess extends AccessibilityService {
         String t = target.trim();
         if (t.matches("\\[?\\d+\\]?")) {
             int i = Integer.parseInt(t.replaceAll("\\D", ""));
-            if (i >= 0 && i < last.size()) { AccessibilityNodeInfo n = last.get(i); n.refresh(); return n; }
+            if (i >= 0 && i < last.size()) {
+                AccessibilityNodeInfo n = last.get(i);
+                try { n.refresh(); } catch (Throwable ignored) {}
+                boolean live = false;
+                try { live = n.isVisibleToUser() && n.isEnabled(); } catch (Throwable ignored) {}
+                if (live) return n;
+                // The screen moved on since that read. A blind tap here is how the wrong button got pressed,
+                // so look for the same thing again by the words it had, and give up honestly if it is gone.
+                String lab = i < lastLabels.size() ? lastLabels.get(i) : "";
+                if (lab != null && !lab.trim().isEmpty() && !lab.trim().matches("\\[?\\d+\\]?")) {
+                    AccessibilityNodeInfo again = find(lab.trim(), wantEditable);
+                    if (again != null) return again;
+                }
+                return null;
+            }
             return null;
         }
         AccessibilityNodeInfo r = root();
@@ -172,7 +207,8 @@ public class DanavAccess extends AccessibilityService {
         String q = t.toLowerCase(Locale.ROOT);
         List<AccessibilityNodeInfo> all = new ArrayList<>();
         collect(r, all, 0);
-        AccessibilityNodeInfo best = null; int bestScore = 0;
+        AccessibilityNodeInfo best = null; int bestScore = 0; long bestArea = Long.MAX_VALUE;
+        android.graphics.Rect rb = new android.graphics.Rect();
         for (AccessibilityNodeInfo n : all) {
             if (wantEditable && !n.isEditable()) continue;
             String s = full(n).toLowerCase(Locale.ROOT);
@@ -180,7 +216,10 @@ public class DanavAccess extends AccessibilityService {
             int score = s.equals(q) ? 4 : s.startsWith(q) ? 3 : s.contains(q) ? 2 : 0;
             if (score == 0) continue;
             if (n.isClickable() || n.isEditable()) score += 1;
-            if (score > bestScore) { best = n; bestScore = score; }
+            long area = Long.MAX_VALUE;
+            try { n.getBoundsInScreen(rb); area = (long) rb.width() * rb.height(); } catch (Throwable ignored) {}
+            // on a tie the smallest box wins: a button, not the whole list that happens to contain its text
+            if (score > bestScore || (score == bestScore && area > 0 && area < bestArea)) { best = n; bestScore = score; bestArea = area; }
         }
         if (best == null && wantEditable) for (AccessibilityNodeInfo n : all) if (n.isEditable()) return n;
         return best;
@@ -285,7 +324,51 @@ public class DanavAccess extends AccessibilityService {
         if (!n.isFocused()) { n.performAction(AccessibilityNodeInfo.ACTION_FOCUS); n.performAction(AccessibilityNodeInfo.ACTION_CLICK); }
         Bundle b = new Bundle();
         b.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
-        return n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b);
+        boolean set = n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, b);
+        if (set && landed(n, text)) return true;
+        // Some apps (web views, Flutter, custom chat inputs) ignore ACTION_SET_TEXT. Put the words on the
+        // clipboard and paste them in instead — that goes through the app's own input path.
+        try {
+            android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (cm != null) {
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("Danav", text));
+                n.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+                Thread.sleep(120);
+                n.performAction(AccessibilityNodeInfo.ACTION_PASTE);
+                if (landed(n, text)) return true;
+                // last resort: select everything in the field and paste again through the focused view
+                Thread.sleep(150);
+                if (n.performAction(AccessibilityNodeInfo.ACTION_PASTE)) return true;
+            }
+        } catch (Throwable ignored) {}
+        return false;
+    }
+
+    /** Did the text really arrive in the field? (160 ms of patience; if it can't be told, assume yes.) */
+    private boolean landed(AccessibilityNodeInfo n, String want) {
+        try {
+            Thread.sleep(160);
+            n.refresh();
+            CharSequence cs = n.getText();
+            String got = cs == null ? "" : cs.toString().trim();
+            String w = want == null ? "" : want.trim();
+            if (got.isEmpty()) return false;
+            if (got.equals(w) || got.contains(w) || w.contains(got)) return true;
+            return got.length() >= Math.min(3, w.length());         // apps that reformat or mask what is typed
+        } catch (Throwable t) { return true; }
+    }
+
+    /** Waits for the screen to stop changing, then reads it — pages that load late are no longer tapped blind. */
+    synchronized String readSettled(long maxMs) {
+        String first = read();
+        long end = System.currentTimeMillis() + Math.max(0, maxMs);
+        while (System.currentTimeMillis() < end) {
+            try { Thread.sleep(240); } catch (InterruptedException e) { break; }
+            String again = read();
+            if (again.equals(first)) return again;
+            first = again;
+        }
+        return first;
     }
 
     /** Presses the keyboard's action key (search / send / go) on the focused field when Android supports it. */

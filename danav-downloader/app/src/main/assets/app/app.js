@@ -135,6 +135,57 @@
   }
   $('#recent').addEventListener('click', (e) => { const b = e.target.closest('[data-id]'); if (b) V.openItem(b.dataset.id); });
 
+  // ================================================================ lyrics (saved on this phone, per song)
+  const Lyr = {
+    key(it) { return it && it.uri ? 'lyr:' + it.uri : ''; },
+    get(it) { const k = this.key(it); if (!k) return ''; try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
+    set(it, text) {
+      const k = this.key(it); if (!k) return;
+      try { if (text && text.trim()) localStorage.setItem(k, text); else localStorage.removeItem(k); } catch (e) { V.toast('No room left to save lyrics'); }
+    },
+  };
+  function hasLyrics(it) { return !!Lyr.get(it).trim(); }
+
+  // ================================================================ colour cover for songs with no poster
+  // One stable colour per song (from its own title + artist), so the list feels designed, never a grey box.
+  function hash32(str) {
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+  function coverCss(seed) {
+    const h = hash32(String(seed || 'music'));
+    const a = h % 360, b = (a + 34 + (h >>> 7) % 92) % 360, c = (a + 200 + (h >>> 13) % 60) % 360;
+    const ang = 118 + (h >>> 5) % 84;
+    return `linear-gradient(${ang}deg, hsl(${a} 62% 46%) 0%, hsl(${b} 58% 33%) 52%, hsl(${c} 52% 22%) 100%)`;
+  }
+  const coverSeed = (t, a) => (t || '') + '\u0001' + (a || '');
+
+  // ================================================================ search that opens from an icon
+  function searchToggle(box, btn, input, onClear) {
+    const b = $(box), i = $(input);
+    if (!b || !b.hidden) { /* */ }
+    $(btn).addEventListener('click', () => {
+      b.hidden = false;
+      $(btn).hidden = true;
+      setTimeout(() => i.focus(), 40);
+    });
+    const close = () => {
+      if (b.hidden) return false;
+      if (i.value) { i.value = ''; onClear(); }
+      i.blur();
+      b.hidden = true;
+      $(btn).hidden = false;
+      return true;
+    };
+    const x = b.querySelector('.search-x');
+    if (x) x.addEventListener('click', close);
+    i.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    return close;
+  }
+  const closeVSearch = searchToggle('#vSearchBox', '#vSearchBtn', '#vSearch', () => { Videos.clearQ(); });
+  const closeMSearch = searchToggle('#mSearchBox', '#mSearchBtn', '#mSearch', () => { Music.clearQ(); });
+
   // ================================================================ media library helpers
   const thumbCache = new Map();    // "v123" → path | ''
   const thumbWanted = new Set();
@@ -257,7 +308,7 @@
           <div class="vrow-i"><div class="vt">${esc(v.title || v.name)}</div><div class="vm">${esc([r, V.bytes(v.size), v.folder].filter(Boolean).join(' · '))}</div><div class="vm">${esc(new Date(v.added * 1000).toLocaleDateString())}</div></div>
           <button class="icon-btn vmore" data-more="${v.id}" aria-label="More">${svg('more')}</button></div>`;
       }
-      return `<div class="vtile" data-id="${v.id}"><div class="vth" data-tk="v${v.id}" data-mod="${v.mod}"><span class="ph">${svg('video')}</span>${r ? `<span class="tag tl">${r}</span>` : ''}${v.dur ? `<span class="tag">${V.ms(v.dur)}</span>` : ''}</div>
+      return `<div class="vtile" data-id="${v.id}"><div class="vth" data-tk="v${v.id}" data-mod="${v.mod}"><span class="ph">${svg('video')}</span>${v.dur ? `<span class="tag">${V.ms(v.dur)}</span>` : ''}</div>
         <div class="vtile-i"><div class="vt">${esc(v.title || v.name)}</div><div class="vm-row"><span class="vm">${esc([V.bytes(v.size), V.ago(v.added * 1000)].filter(Boolean).join(' · '))}</span><button class="icon-btn vmore" data-more="${v.id}" aria-label="More">${svg('more')}</button></div></div></div>`;
     }
     function folders() {
@@ -361,7 +412,8 @@
     return {
       enter() { load(false); if (items) render(); },
       reload() { items = null; load(true); },
-      back() { if (folder) { folder = null; render(); return true; } if (q) { q = ''; $('#vSearch').value = ''; render(); return true; } return false; },
+      clearQ() { q = ''; render(); },
+      back() { if (folder) { folder = null; render(); return true; } if (q) { q = ''; $('#vSearch').value = ''; render(); return true; } if (closeVSearch()) return true; return false; },
       preloadCount() { if (!items && !loading && (call('mediaPerm') || 'denied') !== 'denied') load(false); },
     };
   })();
@@ -369,6 +421,17 @@
   // ================================================================ MUSIC
   const Music = (() => {
     let items = null, loading = false, seg = 'songs', sub = null, q = '';
+    // favourites: the songs you starred, kept on this phone only
+    const favKey = (m) => m.uri ? 'u:' + m.uri : 't:' + m.title + '|' + (m.artist || '') + '|' + (m.dur || 0);
+    let favs = new Set(JSON.parse(localStorage.getItem('mFavs') || '[]'));
+    function isFav(m) { return favs.has(favKey(m)); }
+    function saveFavs() { localStorage.setItem('mFavs', JSON.stringify(Array.from(favs))); }
+    function toggleFav(m) {
+      const k = favKey(m);
+      if (favs.has(k)) favs.delete(k); else favs.add(k);
+      saveFavs(); render(); Player.refreshFav();
+      V.toast(favs.has(k) ? 'Added to favourites' : 'Removed from favourites');
+    }
     let sort = JSON.parse(localStorage.getItem('mSort') || '{"k":"date","asc":false}');
     async function load(force) {
       if (loading || (items && !force)) return;
@@ -387,6 +450,7 @@
     }
     function visible() {
       let list = items || [];
+      if (seg === 'fav' && !sub) list = list.filter(isFav);
       if (sub) list = list.filter(sub.filter);
       if (q) { const t = q.toLowerCase(); list = list.filter((m) => (m.title + ' ' + m.artist + ' ' + m.album).toLowerCase().includes(t)); }
       if (sub && sub.kind === 'album') return list.slice().sort((a, b) => (a.track - b.track) || cmp(a.title, b.title));
@@ -394,9 +458,10 @@
     }
     function songRow(m, i) {
       const cur = Player.state.item && Player.state.item.uri === m.uri;
-      return `<div class="srow ${cur ? 'cur' : ''}" data-i="${i}"><div class="sart" data-tk="a${m.id}" data-mod="${m.mod}"><span class="ph">${svg('music')}</span></div>
+      const f = isFav(m);
+      return `<div class="srow ${cur ? 'cur' : ''}" data-i="${i}"><div class="sart" data-tk="a${m.id}" data-mod="${m.mod}"><span class="ph gen" style="background:${coverCss(coverSeed(m.title, m.artist))}">${svg('music')}</span></div>
         <div class="srow-i"><div class="vt">${esc(m.title)}</div><div class="vm">${esc([m.artist || 'Unknown artist', V.ms(m.dur)].join(' · '))}</div></div>
-        ${cur ? `<span class="eq ${Player.state.playing ? 'on' : ''}"><i></i><i></i><i></i></span>` : ''}<button class="icon-btn vmore" data-more="${i}" aria-label="More">${svg('more')}</button></div>`;
+        ${cur ? `<span class="eq ${Player.state.playing ? 'on' : ''}"><i></i><i></i><i></i></span>` : ''}<button class="icon-btn fav ${f ? 'on' : ''}" data-fav="${i}" aria-label="Favourite">${svg(f ? 'star' : 'favorite')}</button><button class="icon-btn vmore" data-more="${i}" aria-label="More">${svg('more')}</button></div>`;
     }
     function groups(key) {
       const map = new Map();
@@ -425,7 +490,7 @@
         const gs = groups(key);
         if (key === 'album') {
           list.className = 'agrid';
-          chunked(list, gs, (g) => `<div class="atile" data-g="${esc(g.key)}"><div class="aart" data-tk="a${g.first.id}" data-mod="${g.first.mod}"><span class="ph">${svg('album')}</span></div><div class="vt">${esc(g.name)}</div><div class="vm">${esc((g.artist || 'Unknown artist') + ' · ' + g.n)}</div></div>`);
+          chunked(list, gs, (g) => `<div class="atile" data-g="${esc(g.key)}"><div class="aart" data-tk="a${g.first.id}" data-mod="${g.first.mod}"><span class="ph gen" style="background:${coverCss(coverSeed(g.name, g.artist))}">${svg('album')}</span></div><div class="vt">${esc(g.name)}</div><div class="vm">${esc((g.artist || 'Unknown artist') + ' · ' + g.n)}</div></div>`);
         } else {
           list.className = 'flist';
           chunked(list, gs, (g) => `<div class="frow" data-g="${esc(g.key)}"><span class="fic">${svg(key === 'artist' ? 'user' : 'folder')}</span>
@@ -444,6 +509,10 @@
     }
     function empty() {
       const e = $('#mEmpty'); e.hidden = false;
+      if (seg === 'fav' && !q) {
+        e.innerHTML = `<div class="empty-ic">${svg('favorite')}</div><div class="empty-t">No favourites yet</div><div class="empty-s">Tap the star next to any song and it shows up here.</div>`;
+        return;
+      }
       e.innerHTML = `<div class="empty-ic">${svg('music')}</div><div class="empty-t">${q ? 'Nothing matches “' + esc(q) + '”' : 'No music on this phone'}</div><div class="empty-s">${q ? 'Try another word.' : 'Songs and audio you download (Audio only) appear here.'}</div>`;
     }
     function item(m) { return { uri: m.uri, title: m.title, artist: m.artist, album: m.album, art: thumbCache.get('a' + m.id) || '', dur: m.dur, id: m.id, mod: m.mod }; }
@@ -458,13 +527,17 @@
     function songMenu(i) {
       const m = shown[i]; if (!m) return;
       const th = thumbCache.get('a' + m.id);
-      V.openSheet(`<div class="det-head"><div class="sart lg">${th ? `<img src="${esc(V.fileUrl(th))}" alt="">` : `<span class="ph">${svg('music')}</span>`}</div><div><div class="sheet-t">${esc(m.title)}</div><div class="sheet-s">${esc([m.artist, m.album].filter(Boolean).join(' · '))}</div></div></div>
+      V.openSheet(`<div class="det-head"><div class="sart lg">${th ? `<img src="${esc(V.fileUrl(th))}" alt="">` : `<span class="ph gen" style="background:${coverCss(coverSeed(m.title, m.artist))}">${svg('music')}</span>`}</div><div><div class="sheet-t">${esc(m.title)}</div><div class="sheet-s">${esc([m.artist, m.album].filter(Boolean).join(' · '))}</div></div></div>
         ${V.opt('play', 'play', 'Play')}${V.opt('next', 'queue', 'Play next')}${V.opt('add', 'plus', 'Add to queue')}
         ${m.album ? V.opt('album', 'album', 'Go to album', m.album) : ''}${m.artist ? V.opt('artist', 'user', 'Go to artist', m.artist) : ''}
+        ${V.opt('fav', 'star', isFav(m) ? 'Remove from favourites' : 'Add to favourites')}
+        ${V.opt('lyrics', 'subs', 'Lyrics', hasLyrics(m) ? 'Saved' : 'Paste the words')}
         ${V.opt('share', 'share', 'Share')}${V.opt('info', 'info', 'Details', [V.ms(m.dur), V.bytes(m.size), (m.mime || '').replace('audio/', '').toUpperCase()].filter(Boolean).join(' · '))}
         ${V.opt('private', 'private', 'Move to Private', 'Encrypt and hide behind your PIN')}
         <div class="sheet-sep"></div>${V.opt('delete', 'trash', 'Delete from phone', '', 'danger')}`, (a) => {
         if (a === 'play') playList(shown, i);
+        else if (a === 'fav') toggleFav(m);
+        else if (a === 'lyrics') Player.openLyrics(item(m), true);
         else if (a === 'private') { moving = m; VaultUI.moveIn([m.uri]); }
         else if (a === 'next' || a === 'add') { call('music', 'add', JSON.stringify({ item: item(m), next: a === 'next' })); V.toast(a === 'next' ? 'Plays next' : 'Added to queue'); }
         else if (a === 'album') openGroup('album', m.albumId + '|' + m.album);
@@ -496,6 +569,7 @@
       render();
     }
     $('#mList').addEventListener('click', (e) => {
+      const fav = e.target.closest('[data-fav]'); if (fav) { const m = shown[+fav.dataset.fav]; if (m) toggleFav(m); return; }
       const more = e.target.closest('[data-more]'); if (more) { songMenu(+more.dataset.more); return; }
       const g = e.target.closest('[data-g]');
       if (g) { openGroup(seg === 'albums' ? 'album' : seg === 'artists' ? 'artist' : 'folder', g.dataset.g); return; }
@@ -511,7 +585,9 @@
     return {
       enter() { load(false); if (items) render(); },
       reload() { items = null; load(true); },
-      back() { if (sub) { sub = null; render(); return true; } if (q) { q = ''; $('#mSearch').value = ''; render(); return true; } return false; },
+      clearQ() { q = ''; render(); },
+      isFav, favKey,
+      back() { if (sub) { sub = null; render(); return true; } if (q) { q = ''; $('#mSearch').value = ''; render(); return true; } if (seg === 'fav') { seg = 'songs'; $$('#mSeg button').forEach((x) => x.classList.toggle('on', x.dataset.s === 'songs')); render(); return true; } if (closeMSearch()) return true; return false; },
       preloadCount() { if (!items && !loading && (call('mediaPerm') || 'denied') !== 'denied') load(false); },
       refreshCurrent() { if (view === 'music' && items && (seg === 'songs' || sub)) { $$('#mList .srow').forEach((r) => { const m = shown[+r.dataset.i]; const cur = m && Player.state.item && Player.state.item.uri === m.uri; if (cur !== r.classList.contains('cur')) r.outerHTML = songRow(m, +r.dataset.i); }); watchThumbs($('#mList')); $$('#mList .eq').forEach((e) => e.classList.toggle('on', !!Player.state.playing)); } },
     };
@@ -523,13 +599,114 @@
     let dragging = false;
     function art(el, it, big) {
       const p = it && it.art;
-      const key = it ? (p || '') + '|' + it.uri : '';
-      if (el.dataset.key === key) return;
-      el.dataset.key = key;
-      el.innerHTML = p ? `<img src="${esc(V.fileUrl(p))}" alt="" onerror="this.remove()">` : '';
-      if (!p) el.innerHTML = `<span class="ph">${svg('music', big ? 'xl' : '')}</span>`;
-      if (big) { const bg = $('#npBg'); bg.style.backgroundImage = p ? `url("${V.fileUrl(p)}")` : ''; bg.classList.toggle('on', !!p); }
+      const cover = coverCss(coverSeed(it && it.title, it && it.artist));
+      const key = it ? (p || cover) + '|' + it.uri : '';
+      if (el.dataset.key !== key) {
+        el.dataset.key = key;
+        const cv = el.querySelector('canvas'), sb = el.querySelector('.np-spec-on');
+        if (p) {
+          el.style.background = '';
+          el.innerHTML = `<img src="${esc(V.fileUrl(p))}" alt="" onerror="this.remove()">`;
+        } else {
+          // no poster: the song gets its own colour, and the real spectrum plays over it
+          el.style.background = cover;
+          el.innerHTML = `<span class="gen">${svg('music', big ? 'xl' : '')}</span>`;
+        }
+        if (cv) el.appendChild(cv);
+        if (sb) el.appendChild(sb);
+        if (big) { const bg = $('#npBg'); bg.style.background = p ? '' : cover; bg.classList.toggle('on', true); }
+      }
+      if (big) specUi(!!p);
     }
+
+    // ---------------------------------------------------------------- real spectrum (Android's own analyser)
+    const spec = { on: false, want: false, bands: [], peak: 0, hold: [] };
+    const cv = $('#npSpec');
+    const specUi = (hasArt) => {
+      if (!P.open) { cv.hidden = true; $('#npSpecOn').hidden = true; return; }
+      const show = !hasArt && spec.on;
+      cv.hidden = !show;
+      // the small pill only appears if the phone refused the microphone — the spectrum is never faked
+      $('#npSpecOn').hidden = hasArt || spec.on || !spec.failed || spec.asking;
+      $('#npArt').classList.toggle('spec', show);
+      if (show) sizeSpec();
+    };
+    function sizeSpec() {
+      const r = cv.getBoundingClientRect();
+      const dpr = Math.min(2, devicePixelRatio || 1);
+      const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+      if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    }
+    function spectrumOn(auto) {
+      spec.want = true;
+      if (V.call('micPerm') !== 'granted') {
+        spec.asking = true;                          // Android's dialog is up: no pill, no wrong picture
+        V.call('requestMic');                        // Android only shows the dialog the first time
+        if (!auto) V.toast('Allow the microphone and the music shows itself');
+        return;
+      }
+      const r = V.call('spectrumSet', true);
+      if (r === 'mic') { V.call('requestMic'); return; }
+      if (r === 'no') { spec.failed = true; spec.want = false; specUi(false); if (!auto) V.toast("This phone can't analyse the audio"); return; }
+      spec.on = true; spec.failed = false; specUi(false);
+    }
+    function spectrumOff() { spec.want = false; spec.on = false; spec.failed = false; spec.bands = []; spec.hold = []; V.call('spectrumSet', false); specUi(!!(P.state.item && P.state.item.art)); }
+    V.on('mic', (r) => {
+      spec.asking = false;
+      if (r && r.ok) { spec.failed = false; if (spec.want) spectrumOn(true); }
+      else if (spec.want) { spec.failed = true; specUi(false); }
+    });
+    V.on('spectrum', (d) => {
+      if (!d || !d.b) return;
+      spec.bands = d.b; spec.peak = d.p || 0;
+      if (!spec.on) { spec.on = true; specUi(!!(P.state.item && P.state.item.art)); }
+    });
+    V.on('spectrumOff', () => { spec.on = false; spec.bands = []; specUi(!!(P.state.item && P.state.item.art)); });
+    $('#npSpecOn').addEventListener('click', () => spectrumOn(false));
+    (function drawSpec() {
+      requestAnimationFrame(drawSpec);
+      if (cv.hidden || !spec.bands.length || document.hidden) return;
+      sizeSpec();
+      const ctx = cv.getContext('2d'), W = cv.width, H = cv.height, n = spec.bands.length;
+      ctx.clearRect(0, 0, W, H);
+      const gap = Math.max(1, W / n * 0.24), bw = W / n - gap, base = H * 0.94;
+      if (spec.hold.length !== n) spec.hold = new Array(n).fill(0);
+      // the glow that every real analyser has at the bottom of the bars
+      const glow = ctx.createLinearGradient(0, H, 0, H * 0.35);
+      glow.addColorStop(0, 'rgba(255,255,255,.16)');
+      glow.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, H * 0.35, W, H * 0.65);
+      for (let i = 0; i < n; i++) {
+        const v = Math.max(0.012, Math.min(1, spec.bands[i] || 0));
+        const t = n > 1 ? i / (n - 1) : 0;
+        // bass warm and red, mids green-yellow, treble cyan and violet — like a real analyser
+        const hue = (10 + 320 * Math.pow(t, 0.92)) % 360;
+        const h = v * base, x = i * (bw + gap) + gap / 2;
+        const g = ctx.createLinearGradient(0, H, 0, H - h);
+        g.addColorStop(0, `hsl(${hue} 90% ${26 + v * 20}%)`);
+        g.addColorStop(0.55, `hsl(${(hue + 16) % 360} 92% ${42 + v * 26}%)`);
+        g.addColorStop(1, `hsl(${(hue + 30) % 360} 96% ${56 + v * 30}%)`);
+        ctx.fillStyle = g;
+        const r = Math.min(bw / 2, 5);
+        ctx.beginPath();
+        ctx.moveTo(x, H);
+        ctx.lineTo(x, H - h + r);
+        ctx.quadraticCurveTo(x, H - h, x + r, H - h);
+        ctx.lineTo(x + bw - r, H - h);
+        ctx.quadraticCurveTo(x + bw, H - h, x + bw, H - h + r);
+        ctx.lineTo(x + bw, H);
+        ctx.closePath();
+        ctx.fill();
+        // the little cap that holds the highest point of each band, falling slowly — real, from the music
+        spec.hold[i] = Math.max(v, spec.hold[i] - 0.0085);
+        const hh = spec.hold[i] * base;
+        ctx.globalAlpha = spec.hold[i] > 0.03 ? 0.85 : 0;
+        ctx.fillStyle = `hsl(${(hue + 44) % 360} 100% ${72 + v * 22}%)`;
+        ctx.fillRect(x, H - hh - Math.max(1.5, H * 0.008), bw, Math.max(1.5, H * 0.008));
+        ctx.globalAlpha = 1;
+      }
+    })();
     // only touch the DOM when the icon really changes — replacing it under a finger loses the tap
     const setIc = (el, name) => { if (el.dataset.ic !== name) { el.innerHTML = svg(name); el.dataset.ic = name; } };
     const setTxt = (el, t) => { if (el.textContent !== t) el.textContent = t; };
@@ -555,6 +732,7 @@
       if (!P.open) return;
       setTxt($('#npT'), it.title || ''); setTxt($('#npA'), artist);
       setTxt($('#npPos'), s.count > 1 ? `${s.index + 1} of ${s.count}` : '');
+      refreshFav();
       art($('#npArt'), it, true);
       setIc($('#npPlay'), s.want && !s.ended ? 'pause' : 'play');
       $('#npPlay').classList.toggle('buf', !!s.buffering);
@@ -564,8 +742,7 @@
       setIc($('#npRepeat'), s.repeat === 1 ? 'repeat1' : 'repeat');
       // speed / sleep only show up when they're active (tap to change)
       const tags = [];
-      $('#npFx').classList.toggle('on', !!s.fx && s.fx !== 'off');
-      if (s.fx && s.fx !== 'off') tags.push(`<button class="np-tag" data-tag="fx">${svg('eq')}${FX[s.fx] || ''}</button>`);
+        if (s.fx && s.fx !== 'off') tags.push(`<button class="np-tag" data-tag="fx">${svg('eq')}${FX[s.fx] || ''}</button>`);
       else if (s.speed && Math.abs(s.speed - 1) > 0.01) tags.push(`<button class="np-tag" data-tag="speed">${svg('speed')}${+(s.speed).toFixed(2)}×</button>`);
       if (s.sleep) tags.push(`<button class="np-tag" data-tag="sleep">${svg('timer')}${s.sleep > 0 ? 'Stops in ' + Math.ceil(s.sleep / 60000) + ' min' : 'Stops after this song'}</button>`);
       const th = tags.join('');
@@ -574,6 +751,9 @@
       if (!dragging) setTl(s.pos, s.dur, s.buf);
       $('#npPrev').disabled = false;
       $('#npNext').disabled = s.hasNext === false;
+      // no poster → the music shows itself (real analyser, no fake bars); poster → nothing to add
+      if (!it.art) { if (!spec.on && !spec.asking && !spec.failed) spectrumOn(true); }
+      else if (spec.on) spectrumOff();
     }
     function setTl(pos, dur, buf) {
       const f = dur ? Math.min(1, pos / dur) : 0;
@@ -591,6 +771,7 @@
     }
     function hide() {
       P.open = false;
+      closeLyrics();
       const np = $('#np'); np.classList.remove('in');
       setTimeout(() => { if (!P.open) np.hidden = true; }, 260);
     }
@@ -611,7 +792,61 @@
       V.openSheet(`<div class="sheet-h">Sound effects</div>${Object.keys(FX).map((k) => V.opt(k, k === cur ? 'check' : '', FX[k], FXS[k], k === cur ? 'sel' : '')).join('')}`, (a) => { cmd('fx', { id: a }); if (a !== 'off') V.toast(FX[a] + ' on'); });
     }
     V.on('musicFx', (r) => { if (r && r.warn) V.toast(r.warn); });
-    $('#npFx').addEventListener('click', fxSheet);
+
+    // ---------------------------------------------------------------- favourite (the star in the player)
+    function refreshFav() {
+      const it = P.state.item; if (!it) return;
+      const on = Music.isFav({ uri: it.uri, title: it.title, artist: it.artist, dur: P.state.dur || 0 });
+      $('#npFav').classList.toggle('on', on);
+    }
+    $('#npFav').addEventListener('click', () => {
+      const it = P.state.item; if (!it) return;
+      Music.toggleFav({ uri: it.uri, title: it.title, artist: it.artist, dur: P.state.dur || 0 });
+    });
+
+    // ---------------------------------------------------------------- lyrics
+    const lyrEl = $('#npLyr');
+    function paintLyrics(text) {
+      const body = $('#npLyrBody');
+      const clean = (text || '').replace(/\r/g, '');
+      $('#npLyrT').textContent = (lyrIt && lyrIt.title) || (P.state.item && P.state.item.title) || '';
+      $('#npLyrEdit').classList.toggle('save', false);
+      if (!clean.trim()) {
+        body.innerHTML = `<div class="lyr-empty">${svg('subs')}<b>No lyrics saved</b><span>Paste the words once and they stay with this song.</span><button class="btn small" id="npLyrAdd">${svg('editSquare')}Add lyrics</button></div>`;
+        $('#npLyrAdd').addEventListener('click', () => editLyrics(clean));
+        return;
+      }
+      // blank lines become paragraph breaks, single lines stay close together: easy to read along
+      const html = clean.split(/\n{2,}/).map((p) => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('');
+      body.innerHTML = `<div class="lyr">${html}</div>`;
+      body.scrollTop = 0;
+    }
+    function editLyrics(text) {
+      const it = lyrIt || P.state.item || {};
+      $('#npLyrBody').innerHTML = `<div class="lyr-edit"><textarea id="npLyrIn" placeholder="Paste or type the lyrics here…" spellcheck="false"></textarea>
+        <div class="lyr-btns"><button class="btn" id="npLyrCancel">Cancel</button><button class="btn primary" id="npLyrSave">Save</button></div>
+        <div class="lyr-hint">Saved on this phone, with this song — nothing is uploaded.</div></div>`;
+      const ta = $('#npLyrIn');
+      ta.value = text || '';
+      setTimeout(() => { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 60);
+      $('#npLyrCancel').addEventListener('click', () => paintLyrics(Lyr.get(it)));
+      $('#npLyrSave').addEventListener('click', () => { Lyr.set(it, ta.value); paintLyrics(ta.value); V.toast('Lyrics saved'); });
+    }
+    let lyrIt = null;
+    function openLyrics(it, edit) {
+      lyrIt = it || P.state.item || {};
+      show();
+      lyrEl.hidden = false;
+      requestAnimationFrame(() => lyrEl.classList.add('in'));
+      const text = Lyr.get(lyrIt);
+      paintLyrics(text);
+      if (edit || !text.trim()) setTimeout(() => editLyrics(text), 40);
+    }
+    function closeLyrics() { lyrEl.classList.remove('in'); setTimeout(() => { lyrEl.hidden = true; }, 240); }
+    $('#npLyrics').addEventListener('click', () => openLyrics(P.state.item, false));
+    $('#npLyrBack').addEventListener('click', closeLyrics);
+    $('#npLyrEdit').addEventListener('click', () => editLyrics(Lyr.get(lyrIt || P.state.item || {})));
+
     function speedSheet() {
       const cur = P.state.speed || 1;
       V.openSheet(`<div class="sheet-h">Playback speed</div>${[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map((x) => V.opt(String(x), Math.abs(cur - x) < 0.01 ? 'check' : '', x + '×' + (x === 1 ? '  Normal' : ''), '', Math.abs(cur - x) < 0.01 ? 'sel' : '')).join('')}`, (a) => cmd('speed', { v: +a }));
@@ -638,7 +873,6 @@
         else if (a === 'stop') { cmd('stop'); hide(); }
       });
     });
-    $('#npQueue').addEventListener('click', queueSheet);
     function queueSheet() {
       const cur = P.state.index;
       V.openSheet(`<div class="sheet-h">Queue · ${P.queue.length}</div>${P.queue.map((it, i) => `<div class="qrow ${i === cur ? 'cur' : ''}" data-act="j${i}"><span class="qn">${i === cur ? svg('play') : i + 1}</span><span class="qt"><b>${esc(it.title)}</b><span>${esc(it.artist || '')}</span></span>${i !== cur ? `<button class="icon-btn" data-act="r${i}" aria-label="Remove">${svg('close')}</button>` : ''}</div>`).join('')}
@@ -737,6 +971,7 @@
     });
     V.on('musicQueue', (q) => { P.queue = q || []; });
     P.show = show; P.hide = hide; P.render = render;
+    P.openLyrics = openLyrics; P.refreshFav = refreshFav;
     return P;
   })();
 

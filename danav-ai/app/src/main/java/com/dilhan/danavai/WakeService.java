@@ -221,9 +221,10 @@ public class WakeService extends Service {
         if (inCall) open.putExtra("openCall", true);
         PendingIntent pOpen = PendingIntent.getActivity(c, 41, open, fl);
         Notification.Builder b = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(c, CH) : new Notification.Builder(c);
-        b.setSmallIcon(R.drawable.ic_stat).setOngoing(true).setShowWhen(false).setContentIntent(pOpen).setColor(0xFFDC2626)
+        b.setSmallIcon(R.drawable.ic_stat).setOngoing(true).setShowWhen(false).setOnlyAlertOnce(true).setContentIntent(pOpen).setColor(0xFFDC2626)
                 .setContentTitle("Danav")
                 .setContentText(inCall ? "Talk now \u2014 Danav can use your phone for you" : "Ready \u00b7 Volume-Up \u00d73 to wake");
+        b.setSound(null).setVibrate(null).setLights(0, 0, 0);   // never makes a sound, never buzzes, never blinks
         if (Build.VERSION.SDK_INT >= 31) b.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE);
         return b.build();
     }

@@ -27,7 +27,7 @@
     resolve(id, data) { const f = pending.get(id); if (f) { pending.delete(id); f(data); } },
     event(type, data) { (handlers[type] || []).forEach((fn) => { try { fn(data); } catch (e) { console.error(type, e); } }); },
     back() {
-      if (VDrawer.isOpen()) { VDrawer.close(); return true; }
+      if (window.VDrawer && VDrawer.isOpen()) { VDrawer.close(); return true; }
       if (V.sheetOpen()) { V.closeSheet(); return true; }
       for (let i = V.backStack.length - 1; i >= 0; i--) if (V.backStack[i]()) return true;
       return false;
@@ -89,106 +89,59 @@
     });
   };
 
-  // ---------------------------------------------------------------- theme (follows the phone's own setting)
+  // ---------------------------------------------------------------- appearance (theme / accent / text size)
+  const AC = [['red', 'Red', '#dc2626'], ['rose', 'Rose', '#e11d48'], ['orange', 'Orange', '#ea580c'], ['amber', 'Amber', '#d97706'],
+    ['green', 'Green', '#16a34a'], ['teal', 'Teal', '#0d9488'], ['blue', 'Blue', '#2563eb'], ['indigo', 'Indigo', '#4f46e5'],
+    ['violet', 'Violet', '#7c3aed'], ['pink', 'Pink', '#db2777'], ['graphite', 'Graphite', '#3f3f46']];
+  V.ACCENTS = AC;
+  const SET_KEY = 'danav.ai.set';
+  V.SET = Object.assign({ theme: 'system', accent: 'red', size: 'm', compact: false }, (() => { try { return JSON.parse(localStorage.getItem(SET_KEY) || '{}'); } catch (e) { return {}; } })());
+  const hex = (h) => [1, 3, 5].map((i) => parseInt(h.substr(i, 2), 16));
+  const toHex = (c) => '#' + c.map((x) => Math.round(Math.max(0, Math.min(255, x))).toString(16).padStart(2, '0')).join('');
+  const mixc = (a, b, t) => toHex(hex(a).map((x, i) => x + (hex(b)[i] - x) * t));
   V.state = {};
-  V.applyTheme = function (dark) {
-    if (dark === undefined) dark = !!(V.state && V.state.dark);
-    document.documentElement.classList.toggle('dark', !!dark);
+  V.applyTheme = function () {
+    const t = V.SET.theme || 'system';
+    const dark = t === 'dark' || (t === 'system' && !!(V.state && V.state.dark));
+    const root = document.documentElement;
+    root.classList.toggle('dark', dark);
+    const acc = (AC.find((a) => a[0] === V.SET.accent) || AC[0])[2];
+    let p = acc;
+    if (dark && V.SET.accent === 'graphite') p = '#a1a1aa';
+    else if (dark) p = mixc(acc, '#ffffff', 0.12);
+    const bg = dark ? '#0f0f10' : '#ffffff';
+    root.style.setProperty('--primary', p);
+    root.style.setProperty('--primary2', mixc(p, '#000000', 0.16));
+    root.style.setProperty('--primary-c', mixc(p, bg, dark ? 0.84 : 0.93));
+    root.style.setProperty('--on-primary-c', dark ? mixc(p, '#ffffff', 0.3) : mixc(p, '#000000', 0.18));
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', bg);
+    document.body.classList.toggle('compact', !!V.SET.compact);   // tighter lists & messages
+  };
+  V.setLook = function (patch) {
+    Object.assign(V.SET, patch);
+    try { localStorage.setItem(SET_KEY, JSON.stringify(V.SET)); } catch (e) { /* */ }
+    // Java keeps the same three choices and applies the text size as the phone's own zoom
+    const dark = V.call('setTheme', JSON.stringify({ theme: V.SET.theme, accent: V.SET.accent, size: V.SET.size, compact: !!V.SET.compact }));
+    if (typeof dark === 'boolean') V.state.dark = dark;
+    V.applyTheme();
+  };
+  V.setLabel = function () {
+    const t = { system: 'System', light: 'Light', dark: 'Dark' }[V.SET.theme || 'system'];
+    const a = (AC.find((x) => x[0] === V.SET.accent) || AC[0])[1];
+    return t + ' · ' + a;
   };
   function loadState() {
     try { V.state = JSON.parse(V.call('getState') || '{}'); } catch (e) { V.state = {}; }
-    V.applyTheme(V.state.dark);
+    if (V.state.theme) { V.SET.theme = V.state.theme; V.SET.accent = V.state.accent || V.SET.accent; V.SET.size = V.state.size || V.SET.size; V.SET.compact = V.SET.compact || !!V.state.compact; }
+    V.applyTheme();
   }
-  V.on('theme', (d) => { if (d && typeof d.dark === 'boolean') { V.state.dark = d.dark; V.applyTheme(d.dark); } });
+  V.on('theme', (d) => { if (d && typeof d.dark === 'boolean') { V.state.dark = d.dark; V.applyTheme(); } });
 
-  // ---------------------------------------------------------------- tools sidebar (3-line button, right side)
-  const DRAWER = [
-    { g: 'tools', a: 'call', i: 'call', t: 'Voice call', s: () => live().active ? (live().muted ? 'Muted · tap to open' : 'On a call · tap to open') : 'Start talking' },
-    { g: 'tools', a: 'phone', i: 'touchApp', t: 'Phone control', s: () => { const s = st(); return s.access ? (s.overlay ? 'Ready' : 'Overlay needed') : 'Off · allow accessibility'; } },
-    { g: 'tools', a: 'memory', i: 'bulb', t: 'What Danav remembers', s: () => { const n = (st().memory || []).length; return n + (n === 1 ? ' note' : ' notes'); } },
-    { g: 'tools', a: 'voice', i: 'voice', t: 'Voice', s: () => voiceName() },
-    { g: 'tools', a: 'chats', i: 'history', t: 'Chats', s: () => 'Search & old chats' },
-    { g: 'more', a: 'wake', i: 'hearing', t: 'Volume-Up ×3 shortcut', s: () => { const w = st().wake || {}; if (w.error && !w.running) return w.error; if (!w.on) return 'Off'; return w.status === 'call' ? 'On · in a call' : (w.ready || w.status === 'ready' ? 'On · ready anywhere' : 'On'); } },
-    { g: 'more', a: 'battery', i: 'battery', t: 'No battery limits', s: () => st().battery ? 'Allowed' : 'Tap to allow' },
-    { g: 'more', a: 'appinfo', i: 'settings', t: 'App info', s: () => V.state.version ? 'v' + V.state.version : '' },
-  ];
-  const drEl = $('#dr'), drScrim = $('#drScrim');
-  let drOpen = false, clockT = 0;
-
-  const st = () => { try { return JSON.parse(V.call('phoneState') || '{}'); } catch (e) { return {}; } };
-  const live = () => { try { return JSON.parse(V.call('liveInfo') || '{}'); } catch (e) { return {}; } };
-  const voiceName = () => localStorage.getItem('danav.ai.voice') || 'Puck';
-  const rowsWanted = (g) => DRAWER.filter((r) => r.g === g && !(r.a === 'call' && !window.Vidra.liveStart));
-
-  function renderDrawer() {
-    const on = live().active;
-    $('#drTools').innerHTML = rowsWanted('tools').map((r) => row(r, r.a === 'call' && on)).join('');
-    $('#drMore').innerHTML = rowsWanted('more').map((r) => row(r, false)).join('');
-    $('#drSub').textContent = on ? 'Danav is on the line' : 'Voice & phone assistant';
-    $('#drVer').textContent = V.state.version ? 'v' + V.state.version : '';
-    const p = st();
-    if (typeof p.level === 'number') V.state.battery = p.level;
-    $('#wgBatt').textContent = (typeof V.state.battery === 'number' ? V.state.battery + '%' : '—');
-    const n = (p.memory || []).length;
-    $('#wgNotes').textContent = n + (n === 1 ? ' note' : ' notes');
-    $('#wgVoice').textContent = voiceName();
-    tickClock();
-  }
-  const row = (r, on) => `<button class="dr-i${on ? ' on' : ''}" data-dr="${r.a}"><span class="di">${V.svg(r.i)}</span><b>${esc(r.t)}</b><span class="dr-s">${esc(r.s() || '')}</span></button>`;
-  function tickClock() {
-    const d = new Date();
-    const el = $('#wgClock'); if (el) el.textContent = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  }
-  function drawer(on) {
-    if (!drEl) return;
-    drOpen = on;
-    drEl.classList.toggle('show', on);
-    drScrim.classList.toggle('show', on);
-    drEl.setAttribute('aria-hidden', on ? 'false' : 'true');
-    clearInterval(clockT); clockT = 0;
-    if (on) { renderDrawer(); clockT = setInterval(tickClock, 15000); }
-  }
-  function openPage(fn) {
-    const b = document.querySelector('.ai-page [data-v="back"]');
-    if (b) b.click();
-    setTimeout(fn, b ? 280 : 60);
-  }
-  async function drawerAction(a) {
-    drawer(false);
-    const D = window.DanavAI || {};
-    if (a === 'call') {
-      if (!window.Vidra.liveStart) { V.toast('Calls need this phone to allow the microphone'); return; }
-      if (live().active) { if (D.open) D.open(true); if (D.adopt) D.adopt(); return; }
-      if (V.call('micPerm') !== 'granted') { V.call('requestMic'); V.toast('Allow the microphone, then try again'); return; }
-      if (D.call) D.call(); else if (D.open) D.open(true);
-      return;
-    }
-    if (a === 'phone' || a === 'memory') { if (D.open) D.open(true); openPage(() => D.phone && D.phone()); return; }
-    if (a === 'voice') { if (D.open) D.open(true); openPage(() => D.voice && D.voice()); return; }
-    if (a === 'chats') { const b = document.querySelector('#ai [data-a="side"]'); if (b) b.click(); return; }
-    if (a === 'wake') {
-      const w = st().wake || {};
-      const r = V.call('wakeSet', !w.on);
-      if (r === 'mic') { V.call('phoneAsk', 'mic'); V.toast('Allow the microphone first'); }
-      else if (r === 'blocked') V.toast("Android didn't allow the shortcut to start. Try again.");
-      else V.toast(w.on ? 'Volume-Up ×3 shortcut turned off' : 'Volume-Up ×3 anywhere now wakes Danav');
-      setTimeout(renderDrawer, 400);
-      return;
-    }
-    if (a === 'battery') { V.call('phoneAsk', 'battery'); return; }
-    if (a === 'appinfo') { V.call('openAppSettings'); return; }
-  }
-  if (drScrim) drScrim.addEventListener('click', () => drawer(false));
-  if ($('#drClose')) $('#drClose').addEventListener('click', () => drawer(false));
-  if (drEl) drEl.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-dr]');
-    if (b) drawerAction(b.dataset.dr);
-  });
-  const VDrawer = window.VDrawer = { open: () => drawer(true), close: () => drawer(false), isOpen: () => drOpen, render: renderDrawer };
-  V.on('phone', () => { if (drOpen) renderDrawer(); });
-  V.on('wake', () => { if (drOpen) renderDrawer(); });
-  V.on('resume', () => { loadState(); if (drOpen) renderDrawer(); });
-  V.on('callExternal', () => { if (drOpen) renderDrawer(); });
+  // ---------------------------------------------------------------- the old right-side drawer is gone
+  // ai.js draws the ChatGPT-style sidebar (#aiSide) instead: chats, tools and settings all live there.
+  window.VDrawer = { open() {}, close() {}, isOpen: () => false, render() {} };
+  V.on('resume', () => loadState());
 
   // ---------------------------------------------------------------- icons in plain markup ([data-i="name"])
   function renderIcons() {
@@ -205,7 +158,6 @@
       const s = JSON.parse(V.call('getState') || '{}');
       if (s.phone && typeof s.phone.level === 'number') V.state.battery = s.phone.level;
     } catch (e) { /* */ }
-    renderDrawer();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

@@ -41,7 +41,10 @@ final class Bridge {
         JSONObject o = new JSONObject();
         try {
             o.put("version", BuildConfigHelper.version(a)).put("sdk", android.os.Build.VERSION.SDK_INT)
-                    .put("dark", MainActivity.isDark(a)).put("phone", phoneJson(a));
+                    .put("dark", MainActivity.isDark(a)).put("phone", phoneJson(a))
+                    .put("theme", MainActivity.look(a).getString("theme", "system"))
+                    .put("accent", MainActivity.look(a).getString("accent", "red"))
+                    .put("size", MainActivity.look(a).getString("size", "m")).put("compact", MainActivity.look(a).getBoolean("compact", false));
         } catch (Exception ignored) {}
         return o.toString();
     }
@@ -58,6 +61,26 @@ final class Bridge {
     @JavascriptInterface public void toast(String m) { ui(() -> Toast.makeText(a, m, Toast.LENGTH_SHORT).show()); }
 
     @JavascriptInterface public boolean isDark() { return MainActivity.isDark(a); }
+
+    /** Settings → Appearance: {theme, accent, size}. Returns whether the UI should be dark. */
+    @JavascriptInterface public boolean setTheme(String json) {
+        try {
+            JSONObject o = new JSONObject(json);
+            MainActivity.saveLook(a, o.optString("theme", "system"), o.optString("accent", "red"), o.optString("size", "m"), o.optBoolean("compact", false));
+        } catch (Exception ignored) {}
+        ui(((MainActivity) a)::applyTheme);
+        return MainActivity.isDark(a);
+    }
+
+    /** Text size is the phone's own zoom, so the whole page grows together (90 / 100 / 115). */
+    @JavascriptInterface public void setZoom(int z) {
+        int v = z <= 0 ? 100 : Math.max(70, Math.min(160, z));
+        ui(() -> {
+            MainActivity.saveLook(a, MainActivity.look(a).getString("theme", "system"), MainActivity.look(a).getString("accent", "red"),
+                    v <= 92 ? "s" : v >= 108 ? "l" : "m", MainActivity.look(a).getBoolean("compact", false));
+            ((MainActivity) a).setTextZoom(v);
+        });
+    }
 
     /** Links inside an answer open in the phone's own browser — this app has no browser of its own. */
     @JavascriptInterface public void openBrowser(String url, String mode) {
@@ -77,6 +100,9 @@ final class Bridge {
 
     @JavascriptInterface public void aiSend(String id, String json) { Ai.chat(a, host, id, json); }
     @JavascriptInterface public void aiStop(String id) { Ai.stop(id); }
+
+    /** Settings → Test Danav AI: asks the service one tiny question and returns the real reason if it fails. */
+    @JavascriptInterface public void testApi(String reqId) { new Thread(() -> host.resolve(reqId, Ai.test(a)), "danav-test").start(); }
     @JavascriptInterface public void aiTitle(String reqId, String text) { Ai.title(a, host, reqId, text == null ? "" : text); }
     @JavascriptInterface public void aiDeleteAtt(String json) { try { Ai.deleteAtt(a, new org.json.JSONArray(json)); } catch (Exception ignored) {} }
     @JavascriptInterface public void aiPick(String kind) {
@@ -100,7 +126,11 @@ final class Bridge {
     @JavascriptInterface public void liveMute(boolean on) { LiveCall.mute(on); }
     @JavascriptInterface public void liveSpeaker(boolean on) { ui(() -> LiveCall.speaker(on)); }
     @JavascriptInterface public boolean canOverlay() { return CallBubble.allowed(a); }
-    @JavascriptInterface public String liveInfo() { return "{\"active\":" + LiveCall.active() + ",\"wake\":" + LiveCall.isWake() + ",\"muted\":" + LiveCall.muted() + "}"; }
+    @JavascriptInterface public String liveInfo() { return "{\"active\":" + LiveCall.active() + ",\"wake\":" + LiveCall.isWake() + ",\"muted\":" + LiveCall.muted()
+            + ",\"bridge\":" + LiveCall.bridging() + "}"; }
+
+    /** While Danav is talking on a call the user placed, whatever the user types here is said out loud on that call. */
+    @JavascriptInterface public boolean liveSay(String text) { return LiveCall.say(text); }
 
     /** Screen sharing in a call: asks Android for permission, then the call service mirrors the screen. */
     @JavascriptInterface public void liveScreen(boolean on) {
@@ -138,6 +168,8 @@ final class Bridge {
             return new JSONObject()
                     .put("level", level < 0 ? JSONObject.NULL : level)
                     .put("access", DanavAccess.on())
+                    .put("apps", Phone.canStart(c))
+                    .put("why", Phone.canStart(c) ? "" : Phone.startProblem(c))
                     .put("overlay", CallBubble.allowed(c))
                     .put("contacts", Phone.has(c, android.Manifest.permission.READ_CONTACTS))
                     .put("calls", Phone.has(c, android.Manifest.permission.CALL_PHONE))
@@ -151,11 +183,19 @@ final class Bridge {
 
     @JavascriptInterface public String phoneState() { return phoneJson(a).toString(); }
 
+    /** Settings → Test phone control: a real on-device test (opens Settings, checks it arrived, comes back). */
+    @JavascriptInterface public void phoneProve(String reqId) { new Thread(() -> host.resolve(reqId, Phone.prove(a).toString()), "danav-prove").start(); }
+
     @JavascriptInterface public void phoneAsk(String what) {
         ui(() -> {
             try {
                 switch (what) {
                     case "access": a.startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)); break;
+                    case "overlay": {
+                        Intent i = new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + a.getPackageName()));
+                        try { a.startActivity(i); } catch (Exception e) { a.startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION)); }
+                        break;
+                    }
                     case "contacts": a.requestPermissions(new String[]{android.Manifest.permission.READ_CONTACTS}, REQ_PHONE); break;
                     case "calls": a.requestPermissions(new String[]{android.Manifest.permission.CALL_PHONE}, REQ_PHONE); break;
                     case "mic": a.requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_PHONE); break;
@@ -163,8 +203,6 @@ final class Bridge {
                         a.startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + a.getPackageName()))); break;
                     case "appinfo":
                         a.startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + a.getPackageName()))); break;
-                    case "overlay":
-                        a.startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + a.getPackageName()))); break;
                 }
             } catch (Exception e) { Toast.makeText(a, "This setting couldn't be opened on this phone", Toast.LENGTH_SHORT).show(); }
         });

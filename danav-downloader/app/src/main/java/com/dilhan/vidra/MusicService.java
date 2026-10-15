@@ -41,6 +41,7 @@ public class MusicService extends MediaSessionService {
                 .setWakeMode(C.WAKE_MODE_LOCAL)
                 .build();
         SoundFx.attach(this, player);
+        Spectrum.attach(this, player);      // real FFT of this player's audio session (the music spectrum)
         Intent open = new Intent(this, MainActivity.class).putExtra("view", "player").setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent pi = PendingIntent.getActivity(this, 77, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         session = new MediaSession.Builder(this, player)
@@ -73,6 +74,7 @@ public class MusicService extends MediaSessionService {
 
     @Override public void onDestroy() {
         SoundFx.detach();
+        Spectrum.detach();
         if (session != null) { session.getPlayer().release(); session.release(); session = null; }
         super.onDestroy();
     }
