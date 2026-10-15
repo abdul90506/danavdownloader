@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Danav</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body class="app">
+<header class="top" id="top">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="8" fill="#dc2626"/><path d="M15 13.5h7.5a10.5 10.5 0 0 1 0 21H15z" stroke="#fff" stroke-width="4.4" fill="none" stroke-linejoin="round"/><path d="M20.5 19.6v8.8l7-4.4z" fill="#fff"/></svg>
+    <div class="brand-t"><h1 id="hTitle">Danav</h1><div class="sub" id="hSub"></div></div>
+  </div>
+  <div class="top-actions">
+    <button class="icon-btn" id="openBrowser" aria-label="Browser" title="Browser"><span data-i="globe"></span></button>
+    <button class="icon-btn" id="openSettings" aria-label="Settings" title="Settings"><span data-i="settings"></span></button>
+  </div>
+</header>
+
+<main id="main">
+  <!-- ============================================================ HOME -->
+  <section class="view" id="view-home">
+    <div class="hero">
+      <h2 class="hero-t">All Video Downloader</h2>
+      <div class="field" id="field">
+        <span class="field-ic" data-i="link"></span>
+        <input id="url" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste video URL" enterkeyhint="go">
+        <button class="field-x" id="clearUrl" aria-label="Clear" hidden><span data-i="close"></span></button>
+        <button class="field-paste" id="pasteBtn">Paste</button>
+      </div>
+      <button class="btn primary block" id="goBtn"><span data-i="download"></span><span>Download</span></button>
+      <button class="chip" id="clipChip" hidden><span data-i="paste"></span><span class="chip-t">Use copied link</span><span class="chip-u" id="clipUrl"></span></button>
+    </div>
+    <div class="engine" id="engineNote" hidden><span class="spinner"></span><span id="engineText">Preparing the download engine… (first launch only)</span></div>
+    <div id="grab"></div>
+
+    <div id="recentWrap" hidden>
+      <div class="sec-h"><span>Recent downloads</span><button class="link" data-go="downloads">See all</button></div>
+      <div class="recent" id="recent"></div>
+    </div>
+
+    <div class="sec-h"><span>Download from sites</span><button class="link" id="browseAny">Open browser</button></div>
+    <div class="sites" id="quickSites"></div>
+
+    <div class="sec-h"><span>Library</span></div>
+    <div class="lib-tiles">
+      <button class="lib-tile" data-go="videos"><span class="lt-ic" data-i="videoLib"></span><span class="lt-t">Videos</span><span class="lt-n" id="nVideos"></span><span class="chev" data-i="chev"></span></button>
+      <button class="lib-tile" data-go="music"><span class="lt-ic" data-i="musicLib"></span><span class="lt-t">Music</span><span class="lt-n" id="nMusic"></span><span class="chev" data-i="chev"></span></button>
+      <button class="lib-tile" data-go="downloads"><span class="lt-ic" data-i="dlOff"></span><span class="lt-t">Downloads</span><span class="lt-n" id="nDl"></span><span class="chev" data-i="chev"></span></button>
+      <button class="lib-tile" data-go="private"><span class="lt-ic" data-i="private"></span><span class="lt-t">Private</span><span class="lt-n" id="nPriv"></span><span class="chev" data-i="chev"></span></button>
+    </div>
+
+    <div class="sec-h"><span>Ad blocker</span><button class="link" data-go="settings-ad">Settings</button></div>
+    <div class="ad-card">
+      <div class="ad-head">
+        <span class="ad-ic" data-i="shieldOn"></span>
+        <div class="ad-t"><b id="adName">Optimal</b><span>Default level in Danav's browser</span></div>
+        <div class="ad-n"><b id="adTotal">0</b> blocked</div>
+      </div>
+      <div id="homeSlider"></div>
+    </div>
+
+    <div class="credit">Developed by <b>Dilhan</b><span id="appVer"></span></div>
+  </section>
+
+  <!-- ============================================================ VIDEOS -->
+  <section class="view" id="view-videos" hidden>
+    <div class="lib-bar">
+      <div class="seg" id="vSeg"><button data-s="all" class="on">All videos</button><button data-s="folders">Folders</button></div>
+      <div class="lib-tools">
+        <label class="search"><span data-i="search"></span><input id="vSearch" type="search" placeholder="Search videos" autocomplete="off"></label>
+        <button class="icon-btn" id="vSort" aria-label="Sort"><span data-i="sort"></span></button>
+        <button class="icon-btn" id="vMode" aria-label="Layout"><span data-i="list"></span></button>
+      </div>
+    </div>
+    <div class="lib-sub" id="vSub" hidden><button class="icon-btn" id="vSubBack" aria-label="Back"><span data-i="back"></span></button><div class="lib-sub-t"><b id="vSubT"></b><span id="vSubS"></span></div><button class="btn small" id="vSubPlay"><span data-i="play"></span>Play all</button></div>
+    <div class="lib-count" id="vCount"></div>
+    <div id="vList"></div>
+    <div class="perm" id="vPerm" hidden></div>
+    <div class="empty" id="vEmpty" hidden></div>
+  </section>
+
+  <!-- ============================================================ MUSIC -->
+  <section class="view" id="view-music" hidden>
+    <div class="lib-bar">
+      <div class="seg" id="mSeg"><button data-s="songs" class="on">Songs</button><button data-s="albums">Albums</button><button data-s="artists">Artists</button><button data-s="folders">Folders</button></div>
+      <div class="lib-tools">
+        <label class="search"><span data-i="search"></span><input id="mSearch" type="search" placeholder="Search music" autocomplete="off"></label>
+        <button class="icon-btn" id="mSort" aria-label="Sort"><span data-i="sort"></span></button>
+      </div>
+    </div>
+    <div class="lib-sub" id="mSub" hidden><button class="icon-btn" id="mSubBack" aria-label="Back"><span data-i="back"></span></button><div class="lib-sub-t"><b id="mSubT"></b><span id="mSubS"></span></div></div>
+    <div class="play-bar" id="mPlayBar"><button class="btn primary" id="mPlayAll"><span data-i="play"></span>Play</button><button class="btn" id="mShuffle"><span data-i="shuffle"></span>Shuffle</button><span class="lib-count" id="mCount"></span></div>
+    <div id="mList"></div>
+    <div class="perm" id="mPerm" hidden></div>
+    <div class="empty" id="mEmpty" hidden></div>
+  </section>
+
+  <!-- ============================================================ DOWNLOADS -->
+  <section class="view" id="view-downloads" hidden>
+    <div class="store" id="store" hidden><div class="store-t"><span id="storeT"></span><span id="storeF"></span></div><div class="store-bar"><i id="storeI"></i></div></div>
+    <div id="activeWrap" hidden>
+      <div class="sec-h"><span>In progress</span></div>
+      <div id="activeList"></div>
+    </div>
+    <div id="histWrap" hidden>
+      <div class="sec-h"><span>Completed</span><button class="link" id="clearHist">Clear list</button></div>
+      <div id="histList"></div>
+    </div>
+    <div class="empty" id="dlEmpty">
+      <div class="empty-ic" data-i="dlOff"></div>
+      <div class="empty-t">No downloads yet</div>
+      <div class="empty-s">Videos you download appear here and play in Danav's player. They're saved to <b id="emptyFolder">Download/Danav</b>.</div>
+      <button class="btn" data-go="home"><span data-i="link"></span>Paste a link</button>
+    </div>
+  </section>
+
+  <!-- ============================================================ PRIVATE -->
+  <section class="view" id="view-private" hidden></section>
+
+  <!-- ============================================================ SETTINGS -->
+  <section class="view" id="view-settings" hidden>
+    <div class="group-h">Appearance</div>
+    <div class="group">
+      <div class="set">
+        <div class="set-t">Theme</div>
+        <div class="opts3" id="themeOpts"><button data-theme="light"><span data-i="light"></span>Light</button><button data-theme="dark"><span data-i="dark"></span>Dark</button><button data-theme="system"><span data-i="contrast"></span>System</button></div>
+      </div>
+      <div class="set">
+        <div class="set-t">Accent colour</div>
+        <div class="swatches" id="accentOpts"></div>
+      </div>
+      <div class="set">
+        <div class="set-t">Text size</div>
+        <div class="opts3" id="sizeOpts"><button data-size="s"><span class="aa s">Aa</span>Small</button><button data-size="m"><span class="aa">Aa</span>Default</button><button data-size="l"><span class="aa l">Aa</span>Large</button></div>
+      </div>
+      <label class="set row"><div><div class="set-t">Compact lists</div><div class="help">Smaller rows and thumbnails, more on screen.</div></div><input type="checkbox" class="switch" id="compact"></label>
+    </div>
+
+    <div class="group-h">Downloads</div>
+    <div class="group">
+      <div class="set">
+        <div class="set-t">Save to folder</div>
+        <div class="path"><span class="path-pre">Download /</span><input id="folder" type="text" placeholder="(Download folder)" autocomplete="off" spellcheck="false"></div>
+        <div class="help">Files go to your phone's public Download folder, so they show up in Files, your gallery and Danav's library. Leave empty to save directly in Download.</div>
+      </div>
+      <div class="set">
+        <div class="set-t">Preferred quality</div>
+        <select id="quality">
+          <option value="best">Best available</option>
+          <option value="2160">2160p (4K)</option><option value="1440">1440p</option><option value="1080">1080p</option>
+          <option value="720">720p</option><option value="480">480p</option><option value="360">360p</option>
+          <option value="audio">Audio only</option>
+        </select>
+        <div class="help">Selected by default. If a video doesn't have it, the next lower quality is used.</div>
+      </div>
+      <label class="set row"><div><div class="set-t">Prefer MP4 (H.264)</div><div class="help">When a quality comes in several formats, pick the one that plays on every phone.</div></div><input type="checkbox" class="switch" id="preferMp4"></label>
+      <label class="set row"><div><div class="set-t">Detect copied links</div><div class="help">When you open Danav with a video link copied, offer to use it.</div></div><input type="checkbox" class="switch" id="clipboard"></label>
+      <label class="set row"><div><div class="set-t">Notify when finished</div><div class="help">Progress is always shown in the notification while downloading.</div></div><input type="checkbox" class="switch" id="notify"></label>
+    </div>
+
+    <div class="group-h" id="settings-ad">Ad blocker</div>
+    <div class="group">
+      <div class="set">
+        <div class="set-t">Default blocking level</div>
+        <div class="help">Used on every site in Danav's browser. Change it for one site with the shield button in the browser.</div>
+        <div id="setSlider"></div>
+      </div>
+      <div class="set row"><div><div class="set-t">Blocked so far</div><div class="help" id="adStats">0 requests</div></div><button class="btn small" id="adResetStats">Reset</button></div>
+      <div class="set row"><div><div class="set-t">Per-site levels</div><div class="help" id="adSites">No sites changed</div></div><button class="btn small" id="adResetSites">Reset</button></div>
+      <div class="set"><div class="help">Filter lists: EasyList, EasyPrivacy, uBlock filters, Peter Lowe's list, malware lists, AdGuard (mobile, annoyances) — compiled from uBlock Origin Lite.</div></div>
+    </div>
+
+    <div class="group-h">Accounts</div>
+    <div class="group">
+      <div class="set">
+        <div class="set-t">Sign in to a site</div>
+        <div class="help">Needed for private, age-restricted or login-only videos. You sign in on the site itself inside Danav; your password is never seen or stored by Vidra.</div>
+        <div class="site-btns" id="signSites"></div>
+      </div>
+      <div class="set row">
+        <div><div class="set-t">Signed in</div><div class="help" id="signedList">No sites</div></div>
+        <button class="btn small" id="signOut" disabled>Sign out</button>
+      </div>
+    </div>
+
+    <div class="group-h">Privacy</div>
+    <div class="group">
+      <button class="set row set-btn" id="pvOpen"><div><div class="set-t">Private folder</div><div class="help" id="pvState">Hide photos, videos and files behind a PIN</div></div><span class="chev" data-i="chev"></span></button>
+      <button class="set row set-btn" id="pvChange"><div><div class="set-t">Change PIN</div><div class="help">Enter your current PIN, then a new one.</div></div><span class="chev" data-i="chev"></span></button>
+      <button class="set row set-btn" id="pvErase"><div><div class="set-t danger-t">Erase private folder</div><div class="help">Forgot your PIN? This is the only way to start over — everything inside is destroyed.</div></div></button>
+      <div class="set"><div class="help">Files are encrypted with AES-256. The key is sealed by your PIN and by this phone's hardware keystore, so the files can't be opened on another device or by guessing offline. After 5 wrong PINs Danav makes you wait longer and longer. The folder locks itself when you leave Vidra.</div></div>
+    </div>
+
+    <div class="group-h">Download engine</div>
+    <div class="group">
+      <div class="set row">
+        <div><div class="set-t">yt-dlp <span id="engineVer" class="ver"></span></div><div class="help" id="engineStatus">Updates automatically once a day. Sites change often — update if a link stops working.</div></div>
+        <button class="btn small" id="updateEngine">Update</button>
+      </div>
+    </div>
+
+    <div class="group-h">About</div>
+    <div class="group">
+      <div class="set row"><div><div class="set-t">Danav <span class="ver" id="aboutVer"></span></div><div class="help">Downloader, browser with ad blocker, video &amp; music player. Developed by <b>Dilhan</b>.</div></div></div>
+    </div>
+  </section>
+</main>
+
+
+
+<!-- mini player -->
+<div class="mini" id="mini" hidden>
+  <div class="mini-p"><i id="miniP"></i></div>
+  <div class="mini-art" id="miniArt"></div>
+  <div class="mini-t"><b id="miniT"></b><span id="miniA"></span></div>
+  <button class="icon-btn" id="miniPlay" aria-label="Play / pause"><span data-i="play"></span></button>
+  <button class="icon-btn" id="miniNext" aria-label="Next"><span data-i="next"></span></button>
+  <button class="icon-btn mini-x" id="miniClose" aria-label="Close player"><span data-i="close"></span></button>
+</div>
+
+<nav class="nav" id="nav">
+  <button class="nav-b on" data-view="home"><span class="nav-i"><span class="o" data-i="home"></span><span class="f" data-i="homeF"></span></span><b>Home</b></button>
+  <button class="nav-b" data-view="videos"><span class="nav-i"><span class="o" data-i="videoLib"></span><span class="f" data-i="videoLibF"></span></span><b>Videos</b></button>
+  <button class="nav-b" data-view="music"><span class="nav-i"><span class="o" data-i="musicLib"></span><span class="f" data-i="musicLibF"></span></span><b>Music</b></button>
+  <button class="nav-b" data-view="downloads"><span class="nav-i"><span class="o" data-i="dlOff"></span><span class="f" data-i="dlOffF"></span><i class="badge" id="dlCount" hidden>0</i></span><b>Downloads</b></button>
+</nav>
+
+<!-- full music player -->
+<section class="np" id="np" hidden>
+  <div class="np-bg" id="npBg"></div>
+  <div class="np-top">
+    <button class="icon-btn" id="npClose" aria-label="Close"><span data-i="expand"></span></button>
+    <div class="np-h">Now playing<span id="npPos"></span></div>
+    <div class="np-tr">
+      <button class="icon-btn" id="npFx" aria-label="Sound effects"><span data-i="eq"></span></button>
+      <button class="icon-btn" id="npQueue" aria-label="Queue"><span data-i="queue"></span></button>
+      <button class="icon-btn" id="npMore" aria-label="More options"><span data-i="more"></span></button>
+    </div>
+  </div>
+  <div class="np-body">
+    <div class="np-stage" id="npStage"><div class="np-art" id="npArt"></div></div>
+    <div class="np-info">
+      <div class="np-t" id="npT"></div>
+      <div class="np-a" id="npA"></div>
+      <div class="np-err" id="npErr" hidden></div>
+      <div class="tl" id="npTl"><div class="tl-track"><i class="tl-buf"></i><i class="tl-fill"></i><b class="tl-thumb"></b></div></div>
+      <div class="np-times"><span id="npCur">0:00</span><span id="npDur">0:00</span></div>
+      <div class="np-ctl">
+        <button class="icon-btn" id="npShuffle" aria-label="Shuffle"><span data-i="shuffle"></span></button>
+        <button class="icon-btn big" id="npPrev" aria-label="Previous"><span data-i="prev"></span></button>
+        <button class="np-play" id="npPlay" aria-label="Play / pause"><span data-i="play"></span></button>
+        <button class="icon-btn big" id="npNext" aria-label="Next"><span data-i="next"></span></button>
+        <button class="icon-btn" id="npRepeat" aria-label="Repeat"><span data-i="repeat"></span></button>
+      </div>
+      <div class="np-tags" id="npTags"></div>
+    </div>
+  </div>
+</section>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="icons.js"></script>
+<script src="formats.js"></script>
+<script src="core.js"></script>
+<script src="app.js"></script>
+<script src="vault.js"></script>
+</body>
+</html>

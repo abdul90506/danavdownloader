@@ -1,1 +1,0 @@
-{"ok": true, "aid": "a4", "url": "https://www.w3schools.com/html/html5_video.asp", "items": [{"title": "mov_bbb", "duration": 10, "extractor_key": "Generic", "formats": [{"format_id": "mp4", "ext": "mp4", "protocol": "https", "vcodec": "avc1", "acodec": "mp4a", "height": 176, "width": 312, "filesize": 788493, "tbr": 600, "url": "https://example.com/mp4"}]}]}

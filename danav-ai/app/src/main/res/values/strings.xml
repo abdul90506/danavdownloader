@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="access_desc">Lets Danav AI do what you ask during a call: open apps, read what is on the screen, tap, type, scroll and drag — for example sending a WhatsApp message or changing a setting. It only acts when you ask it in a call and never runs on its own.</string>
+</resources>

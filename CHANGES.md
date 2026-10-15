@@ -1,3 +1,66 @@
+# Danav 2.3.0 — do alag apps (15 Oct 2026)
+
+Ab **do alag apps** hain, alag alag source code aur alag APK ke sath:
+
+| App | APK | Size | Kya hai |
+|-----|-----|------|---------|
+| **Danav Downloader** | `DanavDownloader-2.3.0-arm64.apk` | 82 MB | Sirf downloader: sab sites se video/audio, apna browser + ad blocker, video player, music player, Private folder. **AI ka kuch nahi.** |
+| **Danav AI** | `DanavAI-2.3.0-arm64.apk` | 1.7 MB | Sirf Danav AI: chat, live voice call, Volume-Up ×3 circle, poora phone control, memory. |
+
+Dono same certificate se signed hain, is liye 2.2.0 ke upar seedha update hote hain. Package name bhi alag:
+downloader `com.dilhan.vidra`, Danav AI `com.dilhan.danavai` — dono saath install ho sakti hain.
+
+## 1. Source code aur folders alag
+- `danav-downloader/` = pooray downloader ka source (16 java files + apna UI). Isme se AI ka sara code,
+  AI ki web files (`ai.js`, `ai.css`), accessibility service, wake service, call service, mic/overlay
+  permissions aur wake/phone/memory bridge — sab **hata diya**.
+- `danav-ai/` = pooray Danav AI ka source (16 java files + `ai.js`/`ai.css`/`core.js`/`index.html`).
+  Isme downloader/player/vault ka kuch nahi.
+- Dono app ka apna `build.sh`; root me ek `build.sh` jo **dono** APK banata hai (aur pehle purani APK +
+  build folders delete karta hai).
+- Downloader 86 MB → **82 MB** (Vosk voice model lib, JNA aur okhttp nikal gaye).
+
+## 2. Downloader se 3-line button hata diya
+- Danav Downloader ke top-right se hamburger **hata diya**; uski sidebar (tools + widgets) ab **Danav AI app**
+  me hai. Downloader me AI ka koi button, koi switch, koi mention nahi — sirf downloader.
+- Launcher par naam bhi **"Danav Downloader"** ho gaya (AI app ka "Danav AI").
+
+## 3. Danav AI app: 3-line sidebar (right side) + widgets
+- Danav AI ke top-right me 3-line button hai → right side se sidebar khulti hai:
+  **Tools** (Voice call, Phone control, What Danav remembers, Voice, Chats) +
+  **Widgets** (time, battery %, saved notes, current voice) +
+  **Phone** (Volume-Up ×3 shortcut on/off, No battery limits, App info).
+- Left wale button se purani chat list khulti hai (search + purani chats), jaise pehle tha.
+
+## 4. Activation: Volume-Up ×3 (Danav AI me)
+- "Hey Danav" wake word ki ab **koi zarurat nahi** — na voice model, na 79 MB download, na background listening.
+  Jo bhi Vosk ka code tha wo Danav AI se nikal diya, is liye app 1.7 MB ki reh gayi.
+- Volume-Up **3 baar ek saath** → circle aa jata hai; **dobara 3 baar** → chala jata hai. Circle **khud band
+  nahi hota** — 15 second baad bhi nahi, kabhi nahi. Sirf aapka "bye / bas / band karo" ya dobara triple press.
+- Mic service hamesha "Ready · Volume-Up ×3 to wake" rehti hai (ek chhoti, silent notification).
+
+## 5. Phone control (AI)
+- Slide ke baad tap ghalat jagah (neeche wale button par) lagta tha — ab har tap se pehle element screen ke andar
+  laaya jata hai, clamped centre par tap, aur 2 koshish hoti hain; slide ke baad 250 ms settle.
+- Naye tools: `tap_xy` (exact x,y — double tap bhi), `drag`, `set_slider` (slider % tak smooth khinchna),
+  aur `tap` ab ScrollView/RecyclerView ke andar bhi dhoond leta hai.
+
+## 6. Video player (downloader)
+- Rotate karte ho → **swipe se agla video band**; portrait me swipe par agla video **inline** aata hai — pager
+  glid karta hai, agla player pehle se muted pre-loaded hota hai, is liye **kaala gap nahi** aata aur player bhi
+  agle video ke sath chalta hai (300 ms smooth glide, chup-chaap release).
+
+## 7. Fast local replies (AI)
+- Time, date, battery, torch, volume, timer, alarm, screenshot, back/home, WhatsApp message/call, phone call,
+  "X app kholo" — sab phone hi me foran hal hote hain (internet ke bina). Live call me AI ko phone ka live
+  context milta hai: "abhi <din> <waqt>, battery N%, user <app> me hai".
+
+## 8. Jaga (128 MB rule)
+- Build se pehle purani APK aur build folders delete; bekaar `testenv/`, `uploads/` bhi delete.
+- Ab repo ~84 MB ka hai (dono APK mila kar) — 128 MB ke andar.
+
+---
+
 # Danav 2.3.0 — kya badla (13 Oct 2026)
 
 APK: **Danav-2.3.0-arm64.apk** (86 MB, v2 signed, wahi certificate jo 2.2.0/2.1.0 ka tha — seedha update install hota hai).
