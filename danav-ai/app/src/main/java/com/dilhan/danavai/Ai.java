@@ -256,6 +256,10 @@ final class Ai {
                 + "trust the tool result and never say \"not found\" on your own guess. Only if the tool really says the person is nowhere, or two people share the name, ask one short question — "
                 + "never invent a number or a chat. "
                 + "Write messages in the user's own language and words. Believe only what a tool result says: if it says it failed, tell the user plainly. "
+                + "Your own memory: the app records every action it runs for you and the app tells you the latest ones at the start of every answer and every call. "
+                + "If the user asks what you did, what is left, or why something happened, call recall and read the real log — never guess, and never say you did not do "
+                + "something that is in that log. If a tool says a permission is missing, say in one short line which switch to turn on (Phone control → Contacts / "
+                + "Show over other apps) and ask if they want you to open that settings page. "
                 + "For lists scroll, to move a whole page or a story use swipe; if a tap lands on the wrong thing, look at the screen again and retry once.\n"
                 + "Speed and effort: get to the answer without stalling. Never ask the user to confirm something they already clearly asked for — just do it, and pick a "
                 + "sensible default when a small detail is missing. For small, reversible steps always act instead of asking. Do every step yourself; never tell the user how to do it in another app.\n"
@@ -368,6 +372,7 @@ final class Ai {
                                 : "FAILED — this phone doesn't give a screenshot to Danav (Android 11 or newer is needed). Use read_screen instead.");
                     } else {
                         Phone.Out out = Phone.run(ctx, name, args);
+                        if (!out.ok) askForIt(ctx, out.text);
                         result = new JSONObject().put("success", out.ok).put("result", out.ok ? out.text
                                 : "FAILED — " + out.text + " Never tell the user this worked: say plainly what actually happened, or do it another way.");
                         if (!out.ok && out.look) wantLook = true;
@@ -405,6 +410,27 @@ final class Ai {
             }
         }
         event(host, id, "done", "");
+    }
+
+    /**
+     * The user should not have to hunt through settings for the thing that just blocked his request: the
+     * moment a tool fails because a permission is missing, the app asks for exactly that one — a normal
+     * Android dialog for contacts, the overlay page for "open other apps". Nothing happens without the user.
+     */
+    private static void askForIt(Context ctx, String text) {
+        if (text == null) return;
+        try {
+            if (text.contains("Contacts permission is off") && !Phone.has(ctx, android.Manifest.permission.READ_CONTACTS)) {
+                android.app.Activity a = MainActivity.inst;
+                if (a != null) a.runOnUiThread(() -> a.requestPermissions(new String[]{android.Manifest.permission.READ_CONTACTS}, Bridge.REQ_PHONE));
+            } else if (text.contains("Display over other apps") && !Phone.canStart(ctx)) {
+                android.app.Activity a = MainActivity.inst;
+                if (a != null) a.runOnUiThread(() -> {
+                    try { a.startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + a.getPackageName()))); }
+                    catch (Exception ignored) {}
+                });
+            }
+        } catch (Throwable ignored) {}
     }
 
     /** A turn that carries a picture (role user + image part) — how the model gets to see the screen. */
@@ -982,7 +1008,7 @@ final class Ai {
             // the API rejects the whole request if it is (that was why nothing came back)
             java.util.Set<String> have = new java.util.HashSet<>();
             for (int i = 0; i < decls.length(); i++) have.add(decls.getJSONObject(i).optString("name"));
-            JSONArray pt = Phone.tools(false);
+            JSONArray pt = Phone.toolsFor(false, Phone.canStart(ctx));    // never offer a tool the phone will refuse
             JSONArray more = pt.length() > 0 ? pt.getJSONObject(0).optJSONArray("functionDeclarations") : null;
             for (int i = 0; more != null && i < more.length(); i++) {
                 JSONObject d = more.getJSONObject(i);
@@ -992,7 +1018,7 @@ final class Ai {
             }
         } catch (Exception ignored) {}
         return new JSONObject()
-                .put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", identity(ctx) + Phone.contextLine()))))
+                .put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", identity(ctx) + Phone.contextLine(ctx)))))
                 .put("contents", contents)
                 .put("tools", new JSONArray().put(new JSONObject().put("functionDeclarations", decls)))
                 .put("generationConfig", new JSONObject().put("thinkingConfig", think));

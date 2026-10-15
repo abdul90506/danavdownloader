@@ -201,6 +201,9 @@ final class LiveCall {
         switchMic(true);
         String name = who == null || who.isEmpty() ? "them" : who;
         bridgeName = name;
+        String done = Actions.recent(ctx, 5);
+        if (!done.isEmpty()) textTurn("Before this call the user had already asked you to do things on this phone. What you did, newest first:\n" + done
+                + "\nTreat them as done — never say you have not done them and never ask which one to do next.", false);
         textTurn("We are now on a live call with " + name + ", placed for the user. "
                 + (task == null || task.isEmpty() ? "" : "What the user wants you to talk about: " + task + ". ")
                 + "Their voice comes out of the loudspeaker and you hear it a moment after they finish a sentence, so this is a real two-way conversation — "
@@ -243,14 +246,36 @@ final class LiveCall {
         try { openMic(false); } catch (Throwable ignored) {}
     }
 
-    /** A text turn for the live model (instructions, or the exact words to say). */
+    /** A text turn for the live model (instructions, the exact words to say, or a tool result). */
     private void textTurn(String text, boolean complete) {
         try {
             if (ws == null || !ready) return;
             JSONObject t = new JSONObject().put("role", "user").put("parts", new JSONArray().put(new JSONObject().put("text", text)));
-            ws.send(new JSONObject().put("clientContent", new JSONObject().put("turns", new JSONArray().put(t)).put("turnComplete", complete)).toString());
+            JSONObject cc = new JSONObject().put("turns", new JSONArray().put(t)).put("turnComplete", complete);
+
+            // WHY THE TRICK WITH THE EMPTY TURN — this used to lose whole commands.
+            // A realtime session turns what it receives into ONE live turn: the system is told
+            // "input starts, input ends, user finished speaking, model answers". Anything the app sends
+            // while that turn is still open is treated as part of the same thing. So when the result of a
+            // phone step arrived while the model was still finishing its answer to something else, the
+            // next thing the user said could be swallowed or joined onto the previous turn — "pehle kuch
+            // kaha, phir doosri baat, bhool gaya". Closing the open turn with an empty micro-turn first
+            // gives every action result, and every reply, its own turn, so nothing is merged and lost.
+            WebSocket w = ws;
+            boolean danavQuiet = !speaking && playQ.isEmpty();
+            if (danavQuiet && lastMicro) {
+                JSONObject micro = new JSONObject().put("turns", new JSONArray().put(
+                        new JSONObject().put("role", "user").put("parts", new JSONArray().put(new JSONObject().put("text", "·")))))
+                        .put("turnComplete", true);
+                w.send(new JSONObject().put("clientContent", micro).toString());
+                lastMicro = false;
+            }
+            w.send(new JSONObject().put("clientContent", cc).toString());
+            lastMicro = danavQuiet;          // the micro-turn trick only matters while Danav is quiet
         } catch (Exception ignored) {}
     }
+
+    private boolean lastMicro = false;
     static boolean active() { LiveCall l = cur; return l != null && !l.ended; }
     /** One camera / screen frame (base64 JPEG) for the live session — roughly one per second. */
     static void video(String b64) {
@@ -315,6 +340,10 @@ final class LiveCall {
         });
     }
 
+    private static final String RECALL_RULE =
+            "\nYour memory: the app records every action it runs for you, and it is given to you at the start of every call "
+            + "and with every step. If the user asks what you did, what is left, or why something happened, call the recall tool "
+            + "and read the real log — never guess and never say you did not do something that is in the log.\n";
     private static final String PHONE_RULES = "\n\nYou can control this phone with your tools. When the user asks for something on the phone, do it right away with the tools "
             + "instead of explaining how: WhatsApp messages (just the contact name is enough — call whatsapp_message directly, don't ask for the number), calls, SMS, email, "
             + "YouTube, opening apps, settings, alarms, timers, volume, flashlight, maps, and anything else in any app using read_screen, tap, type_text, scroll and system_action. "
@@ -372,7 +401,7 @@ final class LiveCall {
                 .put("generationConfig", new JSONObject()
                         .put("responseModalities", new JSONArray().put("AUDIO"))
                         .put("speechConfig", new JSONObject().put("voiceConfig", new JSONObject().put("prebuiltVoiceConfig", new JSONObject().put("voiceName", voice)))))
-                .put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", Ai.liveIdentity(ctx) + PHONE_RULES + (wake ? WAKE_RULES : "") + Phone.contextLine()))))
+                .put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", Ai.liveIdentity(ctx) + PHONE_RULES + RECALL_RULE + (wake ? WAKE_RULES : "") + Phone.contextLine(ctx)))))
                 .put("tools", toolsOn ? Phone.tools(wake) : new JSONArray())
                 .put("inputAudioTranscription", new JSONObject())
                 .put("outputAudioTranscription", new JSONObject())
@@ -482,6 +511,7 @@ final class LiveCall {
             JSONObject tc = m.optJSONObject("toolCall");
             if (tc != null) { lastAct = SystemClock.elapsedRealtime(); runTools(tc.optJSONArray("functionCalls")); return; }
             if (m.has("goAway")) { lastServer = SystemClock.elapsedRealtime(); ui.postDelayed(this::resume, 300); return; }   // server will close soon — move on early
+            if (m.has("usageMetadata")) lastServer = SystemClock.elapsedRealtime();
             JSONObject sc = m.optJSONObject("serverContent");
             if (sc == null) return;
             if (sc.optBoolean("interrupted")) {
@@ -682,6 +712,12 @@ final class LiveCall {
                     continue;
                 }
                 if (n <= 0) { if (ended) break; SystemClock.sleep(20); continue; }
+                // ---------------------------------------------------------------------------------
+                // RAW AUDIO, NEVER A TRANSCRIPT: exactly the microphone samples the user spoke are sent
+                // here, as PCM, straight to the live model. There is no speech-to-text step anywhere in
+                // this app — Android's speech recognition is not used at all, and no text of the user's words is ever built or sent. The
+                // words that appear on screen under the call come back FROM the service (inputTranscription,
+                // below) for the captions only; they are never sent back to it.
                 // ---------------------------------------------------------------------------------
                 // A frame is ALWAYS sent, every 20 ms, for the whole call. Quiet audio goes out as real
                 // digital silence instead of being skipped.
@@ -984,7 +1020,7 @@ final class LiveCall {
                     try { if (sp != null) am.setCommunicationDevice(sp); } catch (Throwable ignored) {}
                     try { am.clearCommunicationDevice(); } catch (Throwable ignored) {}
                 } else {
-                    try { am.setSpeakerphoneOn(true); } catch (Throwable ignored) {}
+                    try { am.setSpeakerphoneOn(true); } catch (Throwable ignored) {}   // never leave the phone on the earpiece after a Danav call
                     final AudioManager a2 = am;
                     ui.postDelayed(() -> { try { a2.setSpeakerphoneOn(false); } catch (Throwable ignored) {} }, 600);
                 }

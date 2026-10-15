@@ -570,3 +570,98 @@ ye cheezein **device par** confirm karni hongi; isi liye upar "Test phone contro
 ko seedha sach batata hai. Jhooti kamyabi ka koi rasta code me nahi chhoda gaya.
 
 **APK:** `DanavAI-2.3.0-arm64.apk` (1,771,738 bytes · vc 14 · usi certificate se signed · sha256 verified)
+
+---
+
+## 15 Oct 2026 — call ki awaz, WhatsApp, aap ki baat sunna, aur "pehle kya kiya tha" (round 7, Danav AI)
+
+Aap ki shikayatein, ek ek ka jawab:
+
+### 1. "Mera audio speech-to-text ho kar na jaaye — mera audio seedha jaaye"
+
+**Aisa hi hota hai, aur ab ye APK me bhi sabit hai.** App kabhi aap ki awaz ko text me nahi badalti:
+
+* Mic ke **wahi PCM samples** (20 ms ke chunks) seedha `realtimeInput.audio` par `audio/pcm;rate=16000`
+  ban kar `gemini-3.8-live` ko jaate hain. Beech me koi speech-recognition step nahi.
+* Poore app me `android.speech` ki sirf **ek** class hai — `TextToSpeech` (yani Danav **bolta** hai us se).
+  Recognizer ki koi class nahi: naya test `tests/check_apk.py` asli APK ke dex ko parh kar ye check karta hai.
+* Call screen ke neeche jo lafz dikhte hain (captions), woh **service se wapas** aate hain
+  (`inputTranscription`), sirf dikhane ke liye — woh kabhi wapas service ko nahi bheje jaate.
+* Ye baat code me comment ke tor par bhi likhi gayi hai taake aage koi ghalti se "fix" na kar de.
+
+### 2. "WhatsApp open karo — kabhi hota hai kabhi nahi"
+
+**Asal wajah:** app sirf 4.2 second dekhti thi ke app samne aayi ya nahi. Call chalti ho to app ka pehla
+khulna aksar 6–10 second leta hai — is liye doosri dafa khul jaati thi lekin app pehle hi keh deti thi ke
+"nahi khuli", aur agla step (send button dhoondna) andheera me chalta tha.
+
+* Ab app **kam az kam 9 second** dekhti hai (pehla intezar ~6.5 s, phir retry ke sath lamba intezar).
+* WhatsApp ke raste (message, call, WhatsApp ke andar search) ab pehle **tasdeeq** karte hain ke WhatsApp
+  waqai saamne aaya — warna saaf batate hain: *"WhatsApp did not come to the front at all … nothing was sent"*
+  (pehle chup chaap "chat nahi mili" jaisa confusing jawab aata tha).
+* Phone lock ho to wajah ab seedha likhta hai: *"the phone is locked, so nothing can come to the screen"*.
+* Jo tools phone chal hi nahi sakta (app kholna band hai), woh ab model ko **offer hi nahi** hote — is liye
+  woh pehle samajhta hai ke switch on karna hai, phir kaam karta hai.
+
+### 3. "Naam le kar message kaha — keh deta koi contact nahi hai"
+
+**Asal wajah:** naam ka milaap sirf Roman vs Roman tha. Contact me naam **"بلال"** ho aur aap munh se
+**"Bilal"** kahein to score **0** aata tha → "no contact named Bilal" — halanke permission theek thi.
+
+* Ab Urdu/Arabic harf Roman me badle jaate hain (`roman()`) aur vowels/double letters hata kar **consonant
+  core** compare hota hai (`skel()`): *بلال = Bilal*, *امی = Ammi = Amma*, *Muhammad = Mohammad*.
+* Phone ki apni **fuzzy contact search** (`CONTENT_FILTER_URI`) bhi ab shamil hai.
+* Jawaab ab **sach aur mufeed** hai: *"Contacts permission is fine and 412 contacts were read from this
+  phone, but no saved name matches 'Bilal' (closest: Bilal Ahmed, Bilal Khan)"* — yani "did you mean".
+* Do ya teen harf ka adhoora naam (mis-hearing) ab kisi bhi naam se nahi chipta ("ha" ≠ Hamza).
+* Ye sab `tests/test_match.py` me **13 real cases** ke sath JVM par test hota hai (asli `Phone.java` ka code).
+
+### 4. "WhatsApp par kisi ko call kar sake aur us se baat kar sake"
+
+* Naam ab milta hai (upar), call button tasdeeq ke baad dabta hai, phone uthaane ka 20 second intezar,
+  phir Danav **loudspeaker par** baith kar baat karta hai — samne wale ki awaz mic me aati hai, Danav ki awaz
+  un tak jaati hai (bridge). Ab call se **pehle** Danav ko yaad dilaya jaata hai ke pehle kya hua tha.
+* Awaz shuru na ho paaye to app 3.5 second me pakarti hai aur **saaf** batati hai (kaunsi setting on karni hai),
+  chup chaap natak nahi.
+* Danav ki call akele khatam hone par awaz hamesha **loudspeaker** par wapas chali jaati hai.
+
+### 5. "Bhool jaata hai ke pehle kya kiya tha" (sab se bara fix)
+
+**Asal wajah:** chat me aap ke asli lafz hi dobara bheje jaate the — tool ke natije (yani app ka kaam) history
+me nahi the. Is liye naye jawab ko pata hi nahi tha ke abhi kya kaam hua. Call me bhi nayi call pichhle kaam se
+be-khabar shuru hoti thi.
+
+* **Naya `Actions` log:** har tool jo chalta hai (kaamyaab ya nakam) waqt ke sath mahfooz hota hai —
+  `12:04 whatsapp_message — Amma … ✗ did not work`. Screen ke chhote steps (tap/scroll) log me nahi aate taake
+  asli kaam na dab jaayein.
+* Ye log **har jawab** aur **har call** ke shuru me model ko diya jaata hai: *"What you already did on this
+  phone, newest first — never say you have not done something that is listed here."*
+* **Naya `recall` tool:** aap poochein "maine tumhe kya kaha tha / kya kiya tha", Danav asli log parh kar batata
+  hai — andaza nahi. Live test me model ne khud `recall` call kiya.
+* Call me nayi baat ke liye **alag turn** khola jaata hai (micro-turn trick) — pehle agli baat pichhle turn me
+  mil kar gum ho jaati thi. Live WebSocket test se tasdeeq: turn poora hua, jawab aaya.
+* Memory (aap ke bare me saved baatein) bhi ab har jawab ke sath asas hai.
+
+### 6. Permission khud maangta hai
+
+Jis waqt koi kaam permission ki wajah se ruka, app **usi waqt** wohi permission maangta hai (Contacts ka
+Android dialog), aur "open other apps" band ho to seedha us setting ka page khol deta hai. Aap ko settings me
+khud dhoondna nahi padta.
+
+### 7. Tests (sab chalaye hue)
+
+* `python3 tests/test_round6.py` → **55/55** static, `--live` ke sath **58/58**
+* `python3 tests/test_match.py` → **13/13** naam-matching cases (Urdu↔Roman, spelling ghalatiyan, false-hit na hona)
+* `python3 tests/check_apk.py` → **12/12**: APK me koi recognizer class nahi, sirf TextToSpeech; naye fixes
+  asli dex me maujood; signed + vc14
+* `tests/test_honesty.py` → 50 cases `wrong: 0`; `tests/build_tools.py` → **live=33 chat=32** tools
+* Live API: chat `gemini-3.5-flash-lite` 32 tools → **HTTP 200**; voice WS 33 tools → **setupComplete**;
+  micro-turn pattern → **turn completed**; "What did you do on my phone?" → model ne **`recall`** call kiya
+
+**APK:** `DanavAI-2.3.0-arm64.apk` (1,776,074 bytes · vc 14 · usi certificate se signed)
+
+### Jo sirf asli phone par confirm hoga
+
+WhatsApp/contacts/call ka asli UI, clipboard typing, aur live-voice ka asli mic — ye is computer par test nahi
+ho sakte. Isi liye Settings → Phone control → **"Test phone control"** button hai jo aap ko seedha sach batata
+hai, aur har nakami ka saaf message hai — jhooti kamyabi ka rasta code me nahi hai.

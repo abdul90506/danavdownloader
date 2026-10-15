@@ -50,7 +50,14 @@ final class Phone {
 
     // ------------------------------------------------------------------ declarations
 
-    static JSONArray tools(boolean wake) throws Exception {
+    static JSONArray tools(boolean wake) throws Exception { return toolsFor(wake, true); }
+
+    /**
+     * The tool list for a model. {@code apps} is whether this phone can really bring an app to the front
+     * (accessibility service or "display over other apps"); if it cannot, those tools are left out instead
+     * of being offered and then failing — the assistant explains what to switch on and asks for it instead.
+     */
+    static JSONArray toolsFor(boolean wake, boolean apps) throws Exception {
         JSONArray f = new JSONArray();
         f.put(fn("whatsapp_message", "Send a WhatsApp message to a person by name (or number). Sends it right away. If the phone's contacts don't have the name, the app searches inside WhatsApp itself, so never say \"not found\" without this call.",
                 p("contact", "Contact name as the user said it, or a phone number"), p("message", "The message text, in the language/script the user wants"), req("contact", "message")));
@@ -97,6 +104,8 @@ final class Phone {
         f.put(fn("system_action", "Phone buttons and panels.", pe("action", "Action", "back", "home", "recents", "notifications", "quick_settings", "lock", "screenshot", "power_menu"), req("action")));
         f.put(fn("open_url", "Open a website or link.", p("url", "Full URL"), req("url")));
         f.put(fn("web_search", "Search the web for current information.", p("query", "Search query"), req("query")));
+        f.put(fn("recall", "Look up what you have already done on this phone and what you remember about the user. Call it when the user asks what you did, why something happened, or which step is left — never say you have not done something that is listed here.",
+                p("what", "\"actions\", \"memory\" or \"both\" (default: both)")));
         f.put(fn("remember", "Save one short personal fact about the user so later calls and chats feel personal (name, city, language, family, work, routine, likes, "
                         + "dislikes, how they want answers). Call it silently whenever you learn something durable — never announce it or repeat it back.",
                 p("note", "One short sentence in the third person, e.g. \"Speaks Roman Urdu and works nights\""), req("note")));
@@ -208,15 +217,26 @@ final class Phone {
         for (String n : TOOLS) if (n.equals(name)) return true;
         return false;
     }
-    private static final String[] TOOLS = {"whatsapp_message", "whatsapp_call", "say_on_call", "hangup_call", "phone_call", "sms_message", "send_email",
+    private static final String[] TOOLS = {"recall", "whatsapp_message", "whatsapp_call", "say_on_call", "hangup_call", "phone_call", "sms_message", "send_email",
             "youtube_play", "open_app", "media_control", "navigate", "open_settings", "set_volume", "flashlight", "set_alarm", "set_timer", "read_screen", "see_screen",
             "tap", "tap_xy", "drag", "set_slider", "type_text", "scroll", "swipe", "system_action", "open_url", "web_search", "remember", "forget", "end_call", "dismiss"};
 
     private static final String NEED_ACCESS = "Phone control is off. Tell the user to turn on Danav in Settings → Accessibility (Danav app → Danav AI → Phone control).";
 
+    /**
+     * Runs one tool. Every result — success or failure — is also written to {@link Actions}, which is the
+     * memory behind "what did you already do", so the assistant can never again forget its own work.
+     */
     static Out run(Context c, String name, JSONObject a) {
+        Out out = runTool(c, name, a);
+        try { Actions.add(c, name, label(name, a), out != null && out.ok); } catch (Throwable ignored) {}
+        return out;
+    }
+
+    private static Out runTool(Context c, String name, JSONObject a) {
         try {
             switch (name) {
+                case "recall": return recall(c, a == null ? "" : a.optString("what", "both"));
                 case "whatsapp_message": return whatsapp(c, a.optString("contact"), a.optString("message"));
                 case "whatsapp_call": return whatsappCall(c, a.optString("contact"), a.optBoolean("video"), a.optString("say"), a.optString("task"));
                 case "say_on_call": {
@@ -276,10 +296,73 @@ final class Phone {
                 .toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N} ]", " ").replaceAll("\\s+", " ").trim();
     }
 
+    /**
+     * Urdu/Arabic letters in rough Latin. Two people write the same name in two scripts all the time
+     * ("بلال" in the phone, "Bilal" out loud) and the old matching simply said "no contact with that name".
+     */
+    private static String roman(String s) {
+        if (s == null) return "";
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            switch (ch) {
+                case 'ا': case 'آ': case 'أ': case 'إ': case 'ٱ': case 'ع': b.append('a'); break;
+                case 'ب': case 'پ': b.append('b'); break;
+                case 'ت': case 'ٹ': case 'ط': b.append('t'); break;
+                case 'ث': case 'س': case 'ص': b.append('s'); break;
+                case 'ج': b.append('j'); break;
+                case 'چ': b.append("ch"); break;
+                case 'ح': case 'ہ': case 'ھ': case 'ه': case 'ة': b.append('h'); break;
+                case 'خ': b.append("kh"); break;
+                case 'د': case 'ڈ': b.append('d'); break;
+                case 'ذ': case 'ز': case 'ژ': case 'ض': case 'ظ': b.append('z'); break;
+                case 'ر': case 'ڑ': b.append('r'); break;
+                case 'ش': b.append("sh"); break;
+                case 'غ': b.append("gh"); break;
+                case 'ف': b.append('f'); break;
+                case 'ق': b.append('q'); break;
+                case 'ک': b.append('k'); break;
+                case 'گ': b.append('g'); break;
+                case 'ل': b.append('l'); break;
+                case 'م': b.append('m'); break;
+                case 'ن': case 'ں': b.append('n'); break;
+                case 'و': case 'ؤ': b.append('w'); break;
+                case 'ی': case 'ئ': case 'ي': case 'ے': b.append('y'); break;
+                case 'ء': break;
+                default: b.append(ch);
+            }
+        }
+        return b.toString();
+    }
+
+    /**
+     * The consonant core of a name, so the same person written two ways lands on one string:
+     * "Bilal" and "بلال" both give "bl"; "Ammi" (Roman) and "امی" (Urdu) both give "m" — the doubled
+     * letter is only how the sound is written, never a difference in the name.
+     */
+    private static String skel(String s) {
+        String r = roman(norm(s)).replace(" ", "");
+        StringBuilder b = new StringBuilder();
+        char last = 0;
+        for (int i = 0; i < r.length(); i++) {
+            char ch = r.charAt(i);
+            if ("aeiouy".indexOf(ch) >= 0) continue;      // vowels are what the two spellings disagree about
+            if (ch == last) continue;                     // Ammi = Ami, Muhammad = Mohammad
+            b.append(ch);
+            last = ch;
+        }
+        return b.toString();
+    }
+
     /** How well a contact name matches what the user said (0 = not at all). */
     private static int score(String name, String q) {
         String n = norm(name), k = norm(q);
         if (n.isEmpty() || k.isEmpty()) return 0;
+        if (k.length() < 3) {
+            // one or two letters on their own are almost always a mis-heard word, not a name:
+            // only a real match counts ("ha" must never open a chat with "Hamza")
+            return n.equals(k) || n.startsWith(k + " ") ? 90 : 0;
+        }
         if (n.equals(k)) return 100;
         if (n.startsWith(k + " ")) return 90;
         if ((" " + n + " ").contains(" " + k + " ")) return 80;
@@ -299,6 +382,14 @@ final class Phone {
         }
         int dAll = lev(n, k);
         if (Math.max(n.length(), k.length()) >= 5 && dAll <= 2) best = Math.max(best, 50 - dAll * 5);
+        // the same name in two scripts ("بلال" heard as "Bilal", "امی" heard as "Ammi")
+        String sn = skel(name), skk = skel(q);
+        if (!sn.isEmpty() && !skk.isEmpty()) {
+            if (sn.equals(skk)) best = Math.max(best, sn.length() >= 2 ? 88 : 84);
+                // one letter is never enough to "contain" a name ("Abu" must not match "Bilal")
+            else if (sn.length() >= 2 && skk.length() >= 2 && (sn.contains(skk) || skk.contains(sn))) best = Math.max(best, 66);
+            else if (Math.max(sn.length(), skk.length()) >= 4 && lev(sn, skk) <= 1) best = Math.max(best, 72);
+        }
         return best;
     }
 
@@ -311,6 +402,55 @@ final class Phone {
             int[] t = prev; prev = cur; cur = t;
         }
         return prev[b.length()];
+    }
+
+    private static int contactsRead = 0;
+    private static long namesAt = 0;
+    private static final List<String> allNames = new ArrayList<>();
+
+    /** How many contacts were read the last time (the honest number used in the messages). */
+    static int contactsRead() { return contactsRead; }
+
+    /** Every contact name, read once and kept for a minute, for "did you mean …" suggestions. */
+    private static List<String> names(Context c, boolean email) {
+        if (System.currentTimeMillis() - namesAt < 60_000 && !allNames.isEmpty()) return allNames;
+        allNames.clear();
+        if (!has(c, Manifest.permission.READ_CONTACTS)) return allNames;
+        try (Cursor cur = c.getContentResolver().query(ContactsContract.Contacts.CONTENT_URI,
+                new String[]{ContactsContract.Contacts.DISPLAY_NAME}, null, null, null)) {
+            int n = 0;
+            while (cur != null && cur.moveToNext()) {
+                String name = cur.getString(0);
+                if (name == null || name.trim().isEmpty()) continue;
+                n++;
+                if (!allNames.contains(name)) allNames.add(name);
+            }
+            contactsRead = n;
+            namesAt = System.currentTimeMillis();
+        } catch (Throwable ignored) {}
+        return allNames;
+    }
+
+    /** Up to three names closest to what was said — so the reply can say "did you mean …" instead of "not found". */
+    private static String closest(Context c, String q, boolean email) {
+        String sk = skel(q);
+        if (sk.length() < 3) return "";
+        String bestA = "", bestB = "", bestC = "";
+        int da = 99, db = 99, dc = 99;
+        for (String name : names(c, email)) {
+            String sn = skel(name);
+            if (sn.length() < 3) continue;
+            int d = sn.startsWith(sk.substring(0, Math.min(3, sk.length()))) ? Math.max(1, lev(sn, sk) - 2)
+                    : Math.min(lev(sn, sk), Math.max(sn.length(), sk.length()));
+            if (d < da) { dc = db; bestC = bestB; db = da; bestB = bestA; da = d; bestA = name; }
+            else if (d < db) { dc = db; bestC = bestB; db = d; bestB = name; }
+            else if (d < dc) { dc = d; bestC = name; }
+        }
+        if (bestA.isEmpty()) return "";
+        StringBuilder b = new StringBuilder(bestA);
+        if (!bestB.isEmpty()) b.append(", ").append(bestB);
+        if (!bestC.isEmpty()) b.append(", ").append(bestC);
+        return b.toString();
     }
 
     /** People whose name matches, best first (one entry per contact, the mobile / primary number). */
@@ -339,6 +479,20 @@ final class Phone {
                 }
             }
         } catch (Exception ignored) {}
+        // the phone's own fuzzy search — it also matches a name that is written differently, which the
+        // plain comparison above can miss
+        try (Cursor cur = c.getContentResolver().query(
+                Uri.withAppendedPath(ContactsContract.CommonDataKinds.Phone.CONTENT_FILTER_URI, Uri.encode(q)), cols, null, null, null)) {
+            while (cur != null && cur.moveToNext()) {
+                String name = cur.getString(1), val = cur.getString(2);
+                if (name == null || val == null) continue;
+                long id = cur.getLong(0);
+                if (by.containsKey(id)) continue;
+                Person p = new Person();
+                p.id = id; p.name = name; p.number = val; p.score = Math.max(58, score(name, q));
+                by.put(id, p);
+            }
+        } catch (Throwable ignored) {}
         out.addAll(by.values());
         out.sort((x, y) -> y.score - x.score);
         return out;
@@ -351,14 +505,25 @@ final class Phone {
         if (email && w.contains("@")) { Person p = new Person(); p.name = w; p.email = w; return p; }
         if (!email && w.replaceAll("[\\s\\-()]", "").matches("\\+?\\d{5,15}")) { Person p = new Person(); p.name = w; p.number = w.replaceAll("[\\s\\-()]", ""); return p; }
         if (!has(c, Manifest.permission.READ_CONTACTS))
-            return "Danav can't read contacts yet. Tell the user to allow Contacts in Danav AI → Phone control, or give the number.";
+            return "The phone's own contacts are NOT readable — Contacts permission is off for Danav AI (Phone control → Contacts). "
+                    + "Say that plainly and ask for it (or the number); meanwhile the app can still search inside WhatsApp itself.";
         List<Person> l = people(c, w, email);
-        if (l.isEmpty()) return "No contact named \"" + w + "\" was found" + (email ? " with an email address" : "") + ". Ask the user for the exact name or the " + (email ? "address." : "number.");
+        if (l.isEmpty()) {
+            String near = closest(c, w, email);
+            return "Contacts permission is fine and " + contactsRead() + " contacts were read from this phone, but no saved name matches \"" + w + "\""
+                    + (near.isEmpty() ? "" : " (closest: " + near + ")")
+                    + (email ? " with an email address" : "")
+                    + ". The app now searches inside WhatsApp itself — if that finds nothing either, ask the user for the number or how the name is saved there.";
+        }
         // only people we can really reach — an empty number must never turn into a guessed one
         List<Person> usable = new ArrayList<>();
         for (Person p : l) if (email ? (p.email != null && p.email.contains("@")) : validNumber(p.number)) usable.add(p);
-        if (usable.isEmpty())
-            return "The contacts matching \"" + w + "\" have no " + (email ? "email address" : "phone number") + " saved. Ask the user for the " + (email ? "address." : "number.");
+        if (usable.isEmpty()) {
+            String near = closest(c, w, email);
+            return "A contact called \"" + l.get(0).name + "\" exists but has no " + (email ? "email address" : "phone number") + " saved"
+                    + (near.isEmpty() || near.equals(l.get(0).name) ? "" : " (others close to \"" + w + "\": " + near + ")")
+                    + ". Ask the user for the " + (email ? "address." : "number.");
+        }
         Person top = usable.get(0);
         int same = 0;
         for (Person p : usable) if (norm(p.name).equals(norm(top.name))) same++;
@@ -478,6 +643,30 @@ final class Phone {
      * @param expect package that must come to the front (null = "something other than what is there now")
      * @param what   the name to use in the answer ("WhatsApp", "Settings", …)
      */
+    /** Answers "what did you do / what do you know about me" from what the app actually stored. */
+    private static Out recall(Context c, String what) {
+        String w = what == null ? "" : what.toLowerCase(Locale.ROOT);
+        StringBuilder b = new StringBuilder();
+        if (!w.contains("memory")) {
+            String a = Actions.recent(c, 14);
+            b.append("What you have already done on this phone, newest first (never claim you have not done something listed here):\n")
+                    .append(a.isEmpty() ? "(nothing yet in this phone's log)" : a);
+        }
+        if (!w.contains("action")) {
+            StringBuilder m = new StringBuilder();
+            try {
+                JSONArray all = Memory.all(c);
+                for (int i = 0; i < all.length(); i++) {
+                    String t = all.optJSONObject(i) == null ? "" : all.optJSONObject(i).optString("t", "");
+                    if (!t.isEmpty()) m.append(m.length() == 0 ? "" : "\n").append("- ").append(t);
+                }
+            } catch (Throwable ignored) {}
+            if (b.length() > 0) b.append("\n\n");
+            b.append("What you remember about the user:\n").append(m.length() == 0 ? "(nothing saved yet)" : m.toString());
+        }
+        return new Out(b.toString(), false).as(true);
+    }
+
     private static Out launch(Context c, Intent i, String expect, String what) { return launch(c, i, expect, what, 0); }
 
     private static Out launch(Context c, Intent i, String expect, String what, long waitMs) {
@@ -487,14 +676,17 @@ final class Phone {
         String before = onScreen();
         wakeScreen(c);
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        long wait = waitMs > 0 ? waitMs : 6000;
+        // A cold app start while a call is running easily takes 5-10 seconds. Giving up after 4 seconds
+        // used to tell the user "it did NOT come to the front" about an app that opened a moment later —
+        // exactly the "kabhi ho jata hai kabhi nahi" complaint. So: watch the screen long enough, twice.
+        long wait = Math.max(waitMs > 0 ? waitMs : 9000, 9000);
         try {
             start(c, i);
         } catch (Exception e) {
             return bad("I couldn't open " + what + ": " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
         }
         if (s == null) return new Out("Opened " + what + ". (Phone control is off, so I can't check the screen.)", false).as(true);
-        boolean home = waitForFront(s, expect, before, Math.min(wait, 4200));
+        boolean home = waitForFront(s, expect, before, Math.max(4000, wait - 2500));
         if (!home) {
             // second attempt: a fresh task sometimes gets through where the first one is refused
             try {
@@ -503,13 +695,14 @@ final class Phone {
                 Context from = (MainActivity.inst != null && MainActivity.inst.isVisible()) ? MainActivity.inst : c.getApplicationContext();
                 from.startActivity(again);
             } catch (Throwable ignored) {}
-            home = waitForFront(s, expect, before, wait - 4200 > 800 ? wait - 4200 : 1500);
+            home = waitForFront(s, expect, before, Math.max(4500, wait - 4000));
         }
         String screen = now(s);
         if (home) {
             String extra = wasLocked && locked(c) ? " The phone is locked — unlock it to use it." : "";
             return new Out("Opened " + what + "." + extra + screen, true).as(true);
         }
+        if (locked(c)) return badLook("I tried to open " + what + " but the phone is locked, so nothing can come to the screen. Unlock the phone and tell me again." + screen);
         String shown = onScreen();
         String where = shown.isEmpty() ? "the same screen as before" : DanavAccess.me.appLabel(shown) + " (" + shown + ")";
         return badLook("I tried to open " + what + " but it did NOT come to the front — the screen is still showing " + where
@@ -567,6 +760,11 @@ final class Phone {
         if (p != null && !num.isEmpty()) {
             start(c, new Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=" + num + "&text=" + enc(msg))).setPackage(pkg));
             if (s == null) return bad("Opened the WhatsApp chat with " + p.name + " with the message typed, but it was NOT sent because phone control is off: the user has to tap Send. " + NEED_ACCESS);
+            // WhatsApp was started straight from here, so prove it is really on screen before touching it —
+            // otherwise every later step fails in a confusing way ("chat not found") when WhatsApp never opened
+            if (!waitForPkg(s, pkg, 7000))
+                return badLook("WhatsApp did not come to the front at all — the screen is still showing " + onScreen()
+                        + ", so nothing was sent. " + startProblem(c));
             AccessibilityNodeInfo send = s.waitFor(pkg, new String[]{pkg + ":id/send"}, new String[]{"Send"}, 9000);
             if (send != null) {
                 String title = chatTitle(s, pkg);
@@ -607,6 +805,7 @@ final class Phone {
         if (q.isEmpty()) { w.why = "No name was given to look for."; return w; }
         try {
             start(c, c.getPackageManager().getLaunchIntentForPackage(pkg));
+            if (!waitForPkg(s, pkg, 7000)) { w.why = "WhatsApp did not come to the front at all — the screen is still showing " + onScreen() + ". " + startProblem(c); return w; }
             s.settle(1400);
             AccessibilityNodeInfo icon = s.waitFor(pkg,
                     new String[]{pkg + ":id/menuitem_search", pkg + ":id/search", pkg + ":id/search_holder", pkg + ":id/search_bar", pkg + ":id/toolbar_search"},
@@ -700,6 +899,9 @@ final class Phone {
         // 1) via the saved number, if there is one
         if (p != null && !num.isEmpty()) {
             start(c, new Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=" + num)).setPackage(pkg));
+            if (!waitForPkg(s, pkg, 7000))
+                return badLook("WhatsApp did not come to the front at all — the screen is still showing " + onScreen()
+                        + ", so the call was not started. " + startProblem(c));
             AccessibilityNodeInfo b = s.waitFor(pkg, null, video ? new String[]{"Video call"} : new String[]{"Voice call", "Audio call", "Call"}, 8000);
             String title = chatTitle(s, pkg);
             if (b != null && (title == null || titleMatches(title, p))) {
@@ -1318,12 +1520,12 @@ final class Phone {
     }
 
     /** What the phone looks like right now, added to the call's instructions so Danav knows the situation. */
-    static String contextLine() {
+    static String contextLine(Context who) {
         try {
             StringBuilder sb = new StringBuilder("\n\nPhone right now:");
             java.util.Calendar c = java.util.Calendar.getInstance();
             sb.append(" it is ").append(new java.text.SimpleDateFormat("EEEE h:mm a", java.util.Locale.ENGLISH).format(c.getTime()));
-            Context ctx = DanavAccess.me != null ? DanavAccess.me : null;
+            Context ctx = DanavAccess.me != null ? DanavAccess.me : who;
             if (ctx != null) {
                 try {
                     android.os.BatteryManager bm = (android.os.BatteryManager) ctx.getSystemService(Context.BATTERY_SERVICE);
@@ -1336,6 +1538,20 @@ final class Phone {
                 } catch (Throwable ignored) {}
             }
             sb.append(". Use this instead of asking.");
+            try {
+                String acts = Actions.recent(ctx, 6);
+                if (!acts.isEmpty()) sb.append("\n\nWhat you already did on this phone, newest first — the user has just seen these happen, so never say you have not done something that is listed here and never ask which step to do next:\n").append(acts);
+            } catch (Throwable ignored) {}
+            try {
+                JSONArray mem = Memory.all(ctx);
+                if (mem.length() > 0) {
+                    sb.append("\n\nWhat you remember about the user:\n");
+                    for (int i = 0; i < mem.length() && i < 12; i++) {
+                        String t = mem.optJSONObject(i) == null ? "" : mem.optJSONObject(i).optString("t", "");
+                        if (!t.isEmpty()) sb.append("- ").append(t).append('\n');
+                    }
+                }
+            } catch (Throwable ignored) {}
             return sb.toString();
         } catch (Throwable e) { return ""; }
     }
