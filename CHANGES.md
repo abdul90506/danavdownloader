@@ -756,3 +756,90 @@ hain, device nahi hai) use kar ke poora loop chalata hai, aur har qadam check ka
 Asli apps ka UI, asli mic, asli call — ye is computer par nahi ho sakte. Isi liye Settings → Phone control →
 **"Test phone control"** wahi rehta hai jo aap ko seedha sach batata hai, aur har qadam ke sath tasveer
 model ko jati hai (yani ai "andaza" nahi lagata). Koi jhooti kamyabi ka rasta code me nahi hai.
+
+---
+
+## 15 Oct 2026 — awaz gayab hone ki asal wajah, bridge dobara likha, aur "kuch nahi karta" (round 9, Danav AI)
+
+Aap ki report bohat kaam ki thi — us ne teen asli bugs khole. Teeno code me mil gaye, teenon theek:
+
+### 1. "AI ka audio auto mute laga hua" — asal wajah: **audio focus**
+
+* App sirf **ek dafa** audio focus maangti thi aur **jawab kabhi nahi sunta thi**. Jaise hi WhatsApp ki
+  call shuru hoti hai, focus woh le leti hai — app ka focus chala jata hai, aur Android uske baad app ki
+  **awaz band/mute** kar deta hai. Text captions aati rehti hain (woh server se aati hain), is liye aap ko
+  "text aa raha hai, awaz nahi" dikhta tha — bilkul wahi jo aap ne bataya.
+* **Fix:** poora focus listener laga diya (`OnAudioFocusChangeListener`), focus jane par app foran
+  pata kar leti hai — aur bridge ke doran ek **routing watchdog har 2 second** mode, loudspeaker, speaker
+  track, mute aur volume sab dobara set kar deta hai. Jo cheez badalti hai, wapas apni jagah aa jati hai.
+
+### 2. "Na handfree me aata, na speaker me, na call pe dusre bande ko gaya" — bridge ka route ghalat tha
+
+* Bridge ke waqt Danav ki awaz **voice-communication** route par ja rahi thi — call chalti ho to woh route
+  **call app ki milkiyat** hoti hai, is liye awaz earpiece/ghayab ho jati thi.
+* **Fix:** bridge me Danav ki awaz ab **plain media (music stream)** par, **loudspeaker** par, aur kisi
+  session se bandhi hui nahi — yani koi call app us ko nahi le sakti. Isi liye:
+  * **aurat/banda samne wala** Danav ko **loudspeaker se** sunta hai (unke phone ka mic hamare speaker ki awaz
+    pakadta hai) — asli qanoon-e-tabi'at, is liye speaker lazmi hai,
+  * **aap ko** bhi Danav ki awaz speaker me sunai deti hai,
+  * aur samne wale ki awaz aap ko WhatsApp ke apne speaker se aati hai.
+* Bridge me app **focus maangti hi nahi** — warna woh WhatsApp ki call audio khud hi duck/pause kar deti
+  (yani aap samne wale ko sunna band kar dete). Bridge ke doran music stream ka volume bhi app 75% tak
+  rakhti hai taake Danav kamre me saaf sunai de, aur call khatam hone par **wahi purana volume wapas**.
+
+### 3. "Khud hi saying on call", "naye call pe purane wala kaam" — stale bridge
+
+* Call aap khud cut karein to app ko **koi batata hi nahi tha** — `bridge` flag chalta rehta tha, aur app
+  us call par bolti rehti thi jo khatam ho chuki thi. Isi liye bina kuch kahe "Saying it on the call" jaisa
+  likha aata tha.
+* **Fix:** watchdog har 2 second check karta hai ke **screen par call waqai maujood hai ya nahi** — do bar
+  na mile to app khud bridge chhor deti hai, "The call ended — Danav is back with you" batati hai, aur model
+  ko kehti hai ke ab user se baat karo. Naya Danav call **kabhi** purane bridge ko virsa (inherit) nahi karta.
+* `say_on_call` ab **bilkul mana** hai jab tak call asli me join na ho — aur `join_call` ke liye screen par
+  asli call + unlocked phone lazmi hai.
+
+### 4. "Kabhi kabhi kuch bhi nahi karta, koi app nahi khulti"
+
+* Touch/reading wale tools ab pehle **screen jagaate** hain, aur phone **lock** ho to seedha wajah likhte hain:
+  *"The phone is locked right now, so I can't touch the screen."* Pehle aisi soorat me "yeh cheez screen par
+  nahi hai" jaisa ghalat jawab aata tha.
+* Agar Android ne screen hi na di (doosri app upar, ya phone control band), to app wahi batati hai
+  (*"Android is giving me no screen at all"*) — app ko dosh nahi deti.
+* Agar call ke doran **Phone control** Android settings se band ho jaye, app **ek dafa bol kar** batati hai:
+  "turn Danav AI back on in Settings → Accessibility" — pehle chup chaap har step fail hota rehta tha.
+
+### 5. Samne wale ki awaz Danav tak
+
+* Bridge me app ab capture ke **chaar sources** aazmati hai (MIC → VOICE_RECOGNITION → CAMCORDER → UNPROCESSED),
+  aur agar 5 second tak kuch na aaye to **agla source** try karti hai — pehle sirf ek dafa warning de kar
+  bahra reh jati thi.
+
+### 6. Jo cheez aap ne maangi thi — "AI bolte waqt mera mic mute ho jaye"
+
+Ye cheez **technically mumkin nahi** hai, aur wajah yeh hai: Danav ki awaz samne wale tak **is phone ke mic
+ke zariye** jaati hai (speaker → room → mic). Agar app us mic ko mute kar de, to samne wala **Danav ko bhi
+nahi sunega**. Jo cheez app kar sakti hai — aur ab karti hai — woh yeh hai:
+* jab **Danav bol raha ho** to app apni taraf se **model ko kuch nahi bhejti** (Danav khud ko nahi sunta,
+  apni baat khud nahi kaatta),
+* awaz ka rasta hamesha **loudspeaker** par rehta hai, aur volume app sambhalti hai,
+* aur agar samne wale ki awaz Danav tak bilkul na aa rahi ho, app **saaf bolti hai** ke "main sun nahi raha" —
+  natak nahi karti.
+
+### Tests
+
+* `python3 tests/test_round6.py` → **99/99 static**, `--live` ke sath **103/103**
+* `tests/test_agent.py` → **8/8** qadam (asli screenshots par poora computer-use loop)
+* `check_apk.py` → 17/17 · `test_match.py` → 13/13 · `test_honesty.py` → 50 cases `wrong: 0`
+* Naye checks: focus listener, bridge media route, single track builder, routing watchdog, call-gone auto
+  leave, no-inherit bridge, mic source fallback, locked-screen honesty, control-lost notice
+
+**APK:** `DanavAI-2.3.0-arm64.apk` (vc 14, usi certificate se signed)
+
+### Sach jo batana zaroori hai
+
+Asli call ka audio is computer par test nahi ho sakta (device nahi hai). Jo bhi ho sakta tha — compile,
+static analysis, asli API/WebSocket, asli model ke sath screen loop — woh sab test hua. Call par do cheezein
+physics hain: (1) samne wala Danav ko **loudspeaker se** sunta hai, (2) unke phone ka echo-canceller danav ki
+awaz ko thora kam kar sakta hai — is liye app volume 75% par rakhti hai. Agar phir bhi kabhi awaz na aaye to
+call screen par Danav **saaf likhta hai** ke kya hua (jaise "no sound from them reaches you") — chup chaap
+natak nahi.

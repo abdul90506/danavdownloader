@@ -225,8 +225,29 @@ final class Phone {
         return out;
     }
 
+    /** True for the tools that need the screen (so they can wake it first and be honest when it is locked). */
+    static boolean needsScreen(String name) {
+        if (name == null) return false;
+        switch (name) {
+            case "read_screen": case "see_screen": case "tap": case "tap_xy": case "long_press": case "type_text":
+            case "key": case "scroll": case "swipe": case "drag": case "set_slider":
+                return true;
+            default: return false;
+        }
+    }
+
     private static Out runTool(Context c, String name, JSONObject a) {
         try {
+            // Touch and reading need the screen awake; and a locked phone must be named as the reason
+            // instead of "that thing isn't on the screen" — this is one of the ways actions used to
+            // silently fail for the user.
+            if (needsScreen(name)) {
+                DanavAccess s = DanavAccess.me;
+                if (s == null) return bad(NEED_ACCESS);
+                wakeScreen(c);
+                if (locked(c) && !"wake".equals(name))
+                    return badLook("The phone is locked right now, so I can't touch the screen. Unlock it and tell me to go on.");
+            }
             switch (name) {
                 // ---- eyes
                 case "read_screen": return readScreen();
@@ -259,9 +280,15 @@ final class Phone {
                 case "join_call": return joinCall(c, a.optString("task"), a.optString("say"));
                 case "leave_call": return leaveCall();
                 case "say_on_call": {
+                    // Only a call Danav has actually joined can be spoken on. Before, the tool "succeeded"
+                    // whenever a session was alive — that is how the app came to say "saying it on the call"
+                    // with no call at all.
+                    if (!LiveCall.bridging()) return bad(callOnScreen().isEmpty()
+                            ? "There is no call on the screen, so there is nothing to say on a call. Start the call first (open the app, find the person, press its call button), look at the screen, then join_call."
+                            : "A call is on the screen but you have not joined it yet — call join_call first, then say it.");
                     boolean ok = LiveCall.say(a.optString("text"));
                     if (ok) return new Out("Said out loud on the call. Do not repeat it.", false).as(true);
-                    return bad("There is no call running to speak on.");
+                    return bad("The call went quiet before it could be said — nothing was said.");
                 }
                 // ---- this Danav session
                 case "end_call": return new Out("Ending the call.", false, true, false);
@@ -775,6 +802,9 @@ final class Phone {
         return new Out(b.toString(), false).as(true);
     }
 
+    /** Is a call really on the screen right now? Used by the bridge to know when the call is over. */
+    static String callNow() { return callOnScreen(); }
+
     /** The name at the top of a call screen, or "" when no call screen is open. */
     private static String callOnScreen() {
         DanavAccess s = DanavAccess.me;
@@ -806,13 +836,15 @@ final class Phone {
     /** Takes part in the call that is already on the screen — whatever app placed it. */
     private static Out joinCall(Context ctx, String task, String say) {
         if (DanavAccess.me == null) return bad(NEED_ACCESS);
+        if (locked(ctx)) return badLook("The phone is locked, so I can't see or join any call. Unlock it and tell me again.");
         String who = callOnScreen();
         if (who.isEmpty()) return badLook("I don't see a call on the screen, so there is nothing to join. Open the call first (open the app, find the person, press its call button), then look at the screen and join it.");
         if (LiveCall.bridging()) return new Out("Already on the call with " + who + ". Say what the user wants said.", false).as(true);
         LiveCall.bridge(who, task == null ? "" : task);
-        if (say != null && !say.trim().isEmpty()) { sleep(500); LiveCall.say(say.trim()); }
-        return new Out("You are on the call with " + who + " now: you hear them through the loudspeaker and they hear you. Hold a real conversation in the user's language, short sentences, never repeat yourself. "
-                + "If you cannot hear them at all, say so once instead of guessing.", false).as(true);
+        if (say != null && !say.trim().isEmpty()) { sleep(700); LiveCall.say(say.trim()); }
+        return new Out("You are on the call with " + who + " now: their voice comes out of the loudspeaker and into your microphone, and your voice goes out of the loudspeaker to them — "
+                + "the app keeps the loudspeaker on and the music stream open for as long as the call lasts. Talk with them in the user's language, short sentences, never repeat yourself. "
+                + "If no sound from them reaches you at all, say that plainly once — never pretend you heard.", false).as(true);
     }
 
     private static Out leaveCall() {
@@ -834,6 +866,7 @@ final class Phone {
     private static Out readScreen() {
         DanavAccess s = DanavAccess.me;
         if (s == null) return bad(NEED_ACCESS);
+        if (s.root() == null) return badLook("I can't read the screen right now — Android is giving me no screen at all. Phone control may have been switched off, or another app is covering the screen.");
         String t = s.readSettled(1400);                       // let a page finish loading before reporting it
         if (t == null || t.trim().isEmpty() || t.startsWith("Screen can't be read"))
             return badLook("The screen is there but nothing readable is on it (the app draws its own UI). Use see_screen to look at it as a picture." + now(s));

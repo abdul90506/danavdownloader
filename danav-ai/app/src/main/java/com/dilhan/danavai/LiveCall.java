@@ -202,6 +202,16 @@ final class LiveCall {
         // Their voice comes out of the loudspeaker and into the microphone, so a second capture is opened
         // on a non-private source (MIC) — with the accessibility service running, Android lets an app keep
         // capturing while a call is on. See switchMic() and the silence check in the microphone loop.
+        ui.removeCallbacks(routingTick);
+        ui.postDelayed(routingTick, 1500);
+        bridgeGone = 0;
+        // The bridge must never start on a stale flag: everything about audio is re-asserted from scratch.
+        // The focus is RELEASED here, not taken: while somebody else's call is running, the focus belongs to
+        // that call app — asking for it would duck or pause the call itself (the user would stop hearing the
+        // other person), and holding it is exactly what used to mute our own voice when the call took it away.
+        // As a plain media player with the loudspeaker forced on, our voice is heard by the room AND by the user.
+        dropFocus();
+        micSrcIdx = 0;
         switchMic(true);
         String name = who == null || who.isEmpty() ? "them" : who;
         bridgeName = name;
@@ -225,7 +235,13 @@ final class LiveCall {
         if (!bridge) return;
         bridge = false;
         bridgeDeaf = false;
+        bridgeName = null;
+        bridgeGone = 0;
+        ui.removeCallbacks(routingTick);
+        try { if (bridgeMediaVol >= 0 && am != null) { am.setStreamVolume(AudioManager.STREAM_MUSIC, bridgeMediaVol, 0); bridgeMediaVol = -1; } } catch (Throwable ignored) {}
         switchMic(false);                              // back to the normal microphone for talking with the user
+        focusHeld = false;
+        grabFocus(false);                              // the normal voice-communication focus again
         textTurn("That call is finished and you are back with the user — listen and answer normally again.", false);
         state("listening", "");
         lastAct = SystemClock.elapsedRealtime();
@@ -303,6 +319,14 @@ final class LiveCall {
         am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
         oldMode = am.getMode();
         am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+        // A brand-new Danav call never inherits the previous one's state. The old flag used to stay on and the
+        // assistant went on "saying things on the call" when there was no call at all.
+        bridge = false;
+        bridgeName = null;
+        bridgeDeaf = false;
+        bridgeGone = 0;
+        micSrcIdx = 0;
+        ui.removeCallbacks(routingTick);
         grabFocus();                                  // music / video step back so Danav can hear the user
         route();
         devCb = new android.media.AudioDeviceCallback() {
@@ -565,6 +589,14 @@ final class LiveCall {
                 Phone.Out out;
                 try { out = Phone.run(ctx, name, args); }
                 catch (Throwable t) { out = new Phone.Out("That step failed on the phone: " + t.getClass().getSimpleName(), false); }
+                // "kabhi kabhi kuch bhi nahi karta" — when Android takes Phone control away mid-call, every
+                // step fails with the same reason. Say it once, out loud, instead of failing quietly forever.
+                if (!out.ok && out.text != null && out.text.contains("Phone control is off") && !controlLostSaid) {
+                    controlLostSaid = true;
+                    try { send(new JSONObject().put("t", "toast").put("msg", "Phone control is off — turn on Danav AI in Accessibility")); } catch (Exception ignored) {}
+                    textTurn("Phone control has been switched off in Android settings, so you cannot touch the screen any more. "
+                            + "Tell the user in one short line: turn Danav AI back on in Settings → Accessibility, and say you will carry on as soon as it is on.", false);
+                }
                 endBusy();
                 if (ended) return;
                 boolean answeredEarly = toolPending.remove(id) == null;   // the watchdog already told the model not to wait
@@ -641,6 +673,76 @@ final class LiveCall {
         }
     };
 
+    /**
+     * Keeps the bridge audible and honest for as long as it lasts. Every couple of seconds, while Danav is on
+     * somebody's call:
+     *   · if the call is no longer on the screen (the user hung up, the app closed) → leave the bridge at once,
+     *     tell the model, and stop talking into a dead call — this is what used to keep happening;
+     *   · force the loudspeaker + communication mode again (call apps switch them around);
+     *   · if the audio focus was taken away, ask for the sound back — otherwise Android keeps our voice muted;
+     *   · if the music stream is muted, unmute it, and keep its volume usable (restored afterwards);
+     *   · rebuild the speaker if it died, so a reply is never swallowed;
+     *   · if the phone is giving us digital silence instead of the call, try the next microphone source
+     *     instead of warning once and staying deaf.
+     */
+    private final Runnable routingTick = new Runnable() {
+        @Override public void run() {
+            if (ended || !bridge) return;
+            try {
+                String who = Phone.callNow();
+                if (who.isEmpty()) {
+                    if (++bridgeGone > 1) {
+                        android.util.Log.w("DanavAI", "the call is gone — leaving the bridge");
+                        send(new JSONObject().put("t", "toast").put("msg", "The call ended — Danav is back with you"));
+                        textTurn("That call has ended (you are no longer on it). Stop talking about the call; you are back with the user — listen to him again.", false);
+                        leaveBridge();
+                        return;
+                    }
+                } else {
+                    bridgeGone = 0;
+                    if (bridgeName == null || bridgeName.isEmpty() || "them".equals(bridgeName)) bridgeName = who;
+                }
+                if (am != null) {
+                    if (am.getMode() != AudioManager.MODE_IN_COMMUNICATION) am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+                    speakerPref = true;
+                    route();
+                    if (focusHeld) dropFocus();               // never hold focus while the call is running
+                    if (!micForBridge) switchMic(true);
+                    AudioTrack t = track;
+                    if (t == null || t.getState() != AudioTrack.STATE_INITIALIZED) buildTrack();
+                    else if (t.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) { try { t.play(); } catch (Throwable ignored) {} }
+                    try {
+                        if (am.isStreamMute(AudioManager.STREAM_MUSIC)) am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0);
+                    } catch (Throwable ignored) {}
+                    try {
+                        int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                        int cur = am.getStreamVolume(AudioManager.STREAM_MUSIC);
+                        int want = Math.round(max * 0.75f);
+                        if (cur < want) {
+                            if (bridgeMediaVol < 0) bridgeMediaVol = cur;
+                            am.setStreamVolume(AudioManager.STREAM_MUSIC, want, 0);   // Danav has to be heard in the room
+                        }
+                    } catch (Throwable ignored) {}
+                }
+                if (bridgeDeaf && bridgeSilentSince != 0 && SystemClock.elapsedRealtime() - bridgeSilentSince > 5000) {
+                    bridgeSilentSince = SystemClock.elapsedRealtime();
+                    if (micSrcIdx < MIC_SOURCES.length - 1) {
+                        micSrcIdx++;
+                        android.util.Log.w("DanavAI", "no call audio — trying capture source " + micSrcIdx);
+                        reopenMic(rec);
+                        send(new JSONObject().put("t", "tool").put("label", ""));
+                    }
+                }
+            } catch (Throwable t) { android.util.Log.w("DanavAI", "routing: " + Net.describe(t)); }
+            ui.postDelayed(this, 2000);
+        }
+    };
+    private int bridgeGone;
+    private volatile boolean controlLostSaid;
+    private static final int[] MIC_SOURCES = {android.media.MediaRecorder.AudioSource.MIC,
+            android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION, android.media.MediaRecorder.AudioSource.CAMCORDER, 9 /* UNPROCESSED */};
+    private volatile int micSrcIdx;
+
     /** Puts a live session that stopped answering back up, keeping the same conversation. */
     private void resume() {
         if (ended) return;
@@ -694,11 +796,9 @@ final class LiveCall {
         if (!openMic(micForBridge)) { state("error", "The microphone is busy or not allowed."); end(true); return; }
         int sid = rec.getAudioSessionId();
         try { if (!micForBridge && AutomaticGainControl.isAvailable()) { AutomaticGainControl g = AutomaticGainControl.create(sid); if (g != null) g.setEnabled(true); } } catch (Throwable ignored) {}
-        int minOut = AudioTrack.getMinBufferSize(OUT_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
-        track = new AudioTrack(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build(),
-                new AudioFormat.Builder().setSampleRate(OUT_RATE).setEncoding(AudioFormat.ENCODING_PCM_16BIT).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build(),
-                Math.max(minOut, OUT_RATE / 8 * 2), AudioTrack.MODE_STREAM, sid);
-        track.play();
+        try { if (track != null) { track.pause(); track.flush(); track.release(); } } catch (Throwable ignored) {}
+        track = null;
+        buildTrack();                                  // one builder for both routes (voice call / bridge media)
         rec.startRecording();
         micThread = new Thread(() -> {
             short[] buf = new short[IN_RATE / 50];            // 20 ms — smaller chunks reach the model sooner
@@ -855,7 +955,10 @@ final class LiveCall {
     private synchronized boolean openMic(boolean plain) {
         if (ended || micReleased) return false;
         try {
-            int src = plain ? MediaRecorder.AudioSource.MIC : MediaRecorder.AudioSource.VOICE_COMMUNICATION;
+            // Which capture can hear the call is decided by the phone, not by us: while a call is running a
+            // privacy-sensitive source may be handed back as pure silence. So the bridge walks through the
+            // sources (see MIC_SOURCES) and the routing watchdog moves to the next one if nothing arrives.
+            int src = plain ? MIC_SOURCES[Math.max(0, Math.min(MIC_SOURCES.length - 1, micSrcIdx))] : MediaRecorder.AudioSource.VOICE_COMMUNICATION;
             int minIn = AudioRecord.getMinBufferSize(IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
             AudioRecord r = new AudioRecord(src, IN_RATE, AudioFormat.CHANNEL_IN_MONO,
                     AudioFormat.ENCODING_PCM_16BIT, Math.max(minIn, 6400));
@@ -883,12 +986,32 @@ final class LiveCall {
         } catch (Throwable ignored) {}
         try { if (track != null) { track.pause(); track.flush(); track.release(); } } catch (Throwable ignored) {}
         track = null;
+        buildTrack();
+    }
+
+    /**
+     * Builds the speaker for Danav's voice.
+     *
+     * Two completely different jobs:
+     *  · a normal Danav call — voice-communication, on the microphone's own session (with the echo canceller),
+     *    so the phone behaves like a phone: earpiece or loudspeaker, nothing else playing;
+     *  · while Danav is ON SOMEBODY'S CALL — plain media on the music stream, on no session at all. That
+     *    route belongs to nobody, so the call app starting, changing devices or re-routing cannot take it
+     *    away; and it comes out of the LOUDSPEAKER, which is the only way the person on the other end can
+     *    hear Danav (their phone's microphone hears our loudspeaker) and the only way the user hears him too.
+     */
+    private synchronized void buildTrack() {
+        if (ended) return;
         try {
             int minOut = AudioTrack.getMinBufferSize(OUT_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT);
+            AudioAttributes attrs = new AudioAttributes.Builder()
+                    .setUsage(micForBridge ? AudioAttributes.USAGE_MEDIA : AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .setContentType(micForBridge ? AudioAttributes.CONTENT_TYPE_SPEECH : AudioAttributes.CONTENT_TYPE_SPEECH).build();
             AudioRecord r = rec;
-            AudioTrack t = new AudioTrack(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build(),
+            int session = micForBridge ? 0 : (r == null ? 0 : r.getAudioSessionId());
+            AudioTrack t = new AudioTrack(attrs,
                     new AudioFormat.Builder().setSampleRate(OUT_RATE).setEncoding(AudioFormat.ENCODING_PCM_16BIT).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build(),
-                    Math.max(minOut, OUT_RATE / 8 * 2), AudioTrack.MODE_STREAM, r == null ? 0 : r.getAudioSessionId());
+                    Math.max(minOut, OUT_RATE / 8 * 2), AudioTrack.MODE_STREAM, session);
             if (t.getState() != AudioTrack.STATE_INITIALIZED) { try { t.release(); } catch (Throwable ignored) {} return; }
             t.play();
             track = t;
@@ -901,23 +1024,50 @@ final class LiveCall {
     private Object focusReq;
     private boolean focusHeld;
     private int savedMusicVol = -1;
+    private int bridgeMediaVol = -1;              // music volume before the bridge raised it
+    private volatile int focusLost;               // how often the focus was taken away (the call app does this)
+
+    /**
+     * Android mutes an app's sound after it loses audio focus — and the moment a WhatsApp or phone call
+     * starts, it does lose it. Before, nobody listened for that: the app kept streaming into a muted track,
+     * the text captions still arrived (they come from the server), and the user heard nothing at all.
+     * Now every loss is recorded, and the routing watchdog asks for the sound back straight away.
+     */
+    private final AudioManager.OnAudioFocusChangeListener focusCb = change -> {
+        if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT
+                || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
+            focusHeld = false;
+            focusLost++;
+        }
+    };
 
     /** Asks for the audio briefly so anything playing (video, music) ducks instead of drowning the microphone. */
-    private void grabFocus() {
+    private void grabFocus() { grabFocus(false); }
+
+    /**
+     * Asks for the audio. A normal Danav call takes transient voice-communication focus (music steps back).
+     * While Danav is on somebody else's call the focus belongs to the CALL APP — taking it would mute the
+     * call itself — so there the app only asks to be allowed to be heard as media, and the routing watchdog
+     * keeps asking whenever Android takes it away.
+     */
+    private void grabFocus(boolean forBridge) {
         try {
             if (Build.VERSION.SDK_INT >= 26) {
                 AudioAttributes at = new AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build();
+                        .setUsage(forBridge ? AudioAttributes.USAGE_MEDIA : AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build();
                 android.media.AudioFocusRequest r = new android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                        .setAudioAttributes(at).setWillPauseWhenDucked(false).build();
+                        .setAudioAttributes(at).setWillPauseWhenDucked(false)
+                        .setOnAudioFocusChangeListener(focusCb, ui).build();
                 focusReq = r;
                 focusHeld = am.requestAudioFocus(r) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
             } else {
-                focusHeld = am.requestAudioFocus(null, AudioManager.STREAM_VOICE_CALL, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+                focusHeld = am.requestAudioFocus(focusCb, forBridge ? AudioManager.STREAM_MUSIC : AudioManager.STREAM_VOICE_CALL,
+                        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
             }
         } catch (Throwable ignored) {}
-        try {                                            // and, if it is still playing, turn it right down
-            if (savedMusicVol < 0 && am.isMusicActive()) {
+        try {                                            // and, if music is still playing, turn it right down
+            if (!forBridge && savedMusicVol < 0 && am.isMusicActive()) {
                 int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
                 int soft = Math.max(1, Math.round(max * 0.16f));
                 int was = am.getStreamVolume(AudioManager.STREAM_MUSIC);
@@ -927,7 +1077,9 @@ final class LiveCall {
     }
 
     private void dropFocus() {
-        try { if (savedMusicVol >= 0) { am.setStreamVolume(AudioManager.STREAM_MUSIC, savedMusicVol, 0); savedMusicVol = -1; } } catch (Throwable ignored) {}
+        // While bridging the volume is ours to manage (the watchdog keeps the music stream usable), so the
+        // pre-call volume is only restored on the way out of the bridge, never in the middle of a call.
+        try { if (!bridge && savedMusicVol >= 0) { am.setStreamVolume(AudioManager.STREAM_MUSIC, savedMusicVol, 0); savedMusicVol = -1; } } catch (Throwable ignored) {}
         try {
             if (Build.VERSION.SDK_INT >= 26) { if (focusReq instanceof android.media.AudioFocusRequest) am.abandonAudioFocusRequest((android.media.AudioFocusRequest) focusReq); }
             else if (focusHeld) am.abandonAudioFocus(null);
@@ -1030,6 +1182,7 @@ final class LiveCall {
             if (am != null) {
                 if (devCb != null) am.unregisterAudioDeviceCallback(devCb);
                 if (scoOn) { am.setBluetoothScoOn(false); am.stopBluetoothSco(); scoOn = false; }
+                if (bridgeMediaVol >= 0) { try { am.setStreamVolume(AudioManager.STREAM_MUSIC, bridgeMediaVol, 0); } catch (Throwable ignored) {} bridgeMediaVol = -1; }
                 dropFocus();
                 // The earpiece must never stay as the last device: that is why music and videos used to come out
                 // of the top speaker after a Danav call. Hand the route back to the loudspeaker, then release it.
