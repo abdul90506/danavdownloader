@@ -13,9 +13,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Instant answers for simple commands, done on the phone itself (no network, no waiting):
- * time &amp; date, battery, torch, volume, alarm, timer, opening an app, calling or messaging someone.
- * Anything else — anything that needs thinking — goes to the model as usual.
+ * Instant answers for questions the phone can answer on the spot, with no network and no side effects:
+ * the time, the date, the battery. Anything that does something — opening, tapping, calling, sending —
+ * goes to the assistant, which looks at the screen and drives the phone the way the user does.
  */
 final class Fast {
     private Fast() {}
@@ -50,91 +50,9 @@ final class Fast {
                 boolean charging = bm != null && bm.isCharging();
                 if (lvl >= 0) return new Hit(ur ? "Battery " + lvl + "% hai" + (charging ? " aur charge ho rahi hai." : ".") : "Battery is " + lvl + "%" + (charging ? " and charging." : "."), null, null);
             }
-            // ---- torch ------------------------------------------------------------------------
-            if (Pattern.compile("(torch|flashlight|batti|बत्ती|टॉर्च)").matcher(s).find()) {
-                Boolean on = onOff(s);
-                if (on != null) return new Hit(ur ? (on ? "Torch on." : "Torch off.") : (on ? "Torch on." : "Torch off."),
-                        "flashlight", new JSONObject().put("on", on).toString());
-            }
-            // ---- volume -----------------------------------------------------------------------
-            if (Pattern.compile("(volume|awaz|awaaz|आवाज़|आवाज)").matcher(s).find()) {
-                Matcher p = Pattern.compile("(\\d{1,3})\\s*%?").matcher(s);
-                String level = null;
-                if (p.find()) level = p.group(1);
-                else if (Pattern.compile("(mute|silent|khamosh|बंद कर)").matcher(s).find()) level = "mute";
-                else if (Pattern.compile("(tez|badha|zada|up|bara|increase|max|full|तेज़)").matcher(s).find()) level = "up";
-                else if (Pattern.compile("(kam|ghata|down|chhota|decrease|कम)").matcher(s).find()) level = "down";
-                if (level != null) {
-                    String stream = Pattern.compile("(ring|rington|bell|ghanti)").matcher(s).find() ? "ring" : "media";
-                    return new Hit(ur ? "Theek, volume set kar diya." : "Done, volume set.", "set_volume",
-                            new JSONObject().put("stream", stream).put("level", level).toString());
-                }
-            }
-            // ---- timer ------------------------------------------------------------------------
-            if (Pattern.compile("(timer|टाइमर|ٹائمر)").matcher(s).find()) {
-                Integer sec = duration(s);
-                if (sec != null && sec > 0) {
-                    String human = sec % 60 == 0 ? (sec / 60) + (ur ? " minute" : " minute" + (sec / 60 == 1 ? "" : "s")) : sec + " second" + (sec == 1 ? "" : "s");
-                    return new Hit(ur ? "Timer lag gaya: " + human + " ⏱" : "Timer set: " + human + " ⏱", "set_timer",
-                            new JSONObject().put("seconds", sec).toString());
-                }
-            }
-            // ---- alarm ------------------------------------------------------------------------
-            if (Pattern.compile("(alarm|अलार्म|الارم)").matcher(s).find()) {
-                int[] hm = time(s);
-                if (hm != null) {
-                    String hmS = String.format(Locale.ENGLISH, "%02d:%02d", hm[0], hm[1]);
-                    return new Hit(ur ? "Alarm " + hmS + " par laga diya ⏰" : "Alarm set for " + hmS + " ⏰", "set_alarm",
-                            new JSONObject().put("hour", hm[0]).put("minute", hm[1]).toString());
-                }
-            }
-            // ---- screenshot / navigation -------------------------------------------------------
-            if (Pattern.compile("(screenshot|screen shot|स्क्रीनशॉट)").matcher(s).find())
-                return new Hit(ur ? "Screenshot le liya." : "Screenshot taken.", "system_action", new JSONObject().put("action", "screenshot").toString());
-            if (Pattern.compile("^(back|wapas|peeche) (jao|ja|karo|chalo)$|^go back$").matcher(s).find())
-                return new Hit(ur ? "Wapas." : "Back.", "system_action", new JSONObject().put("action", "back").toString());
-            if (Pattern.compile("^(home|ghar) (jao|ja|karo|chalo)$").matcher(s).find())
-                return new Hit(ur ? "Home." : "Home.", "system_action", new JSONObject().put("action", "home").toString());
-            // ---- WhatsApp message -------------------------------------------------------------
-            Matcher wam = Pattern.compile("(.+?)\\s+ko\\s+(?:whatsapp|whats app|wa|wp|واٹس اپ)\\s*(?:par|pe|pr|पर)?\\s*(.+?)\\s*(?:bhej\\w*|likh\\w*|send\\w*|kar\\s*do|kardo|message)\\s*$").matcher(s);
-            if (wam.find()) {
-                String who = tidy(wam.group(1)), what = tidy(wam.group(2));
-                if (!who.isEmpty() && !what.isEmpty())
-                    return new Hit(reply(who, what, ur), "whatsapp_message",
-                            new JSONObject().put("contact", who).put("message", what).toString());
-            }
-            // ---- call -------------------------------------------------------------------------
-            Matcher wc = Pattern.compile("(.+?)\\s+ko\\s+(?:whatsapp|whats app|wa|واٹس اپ)\\s*(?:par|pe|pr)?\\s*(?:video\\s*)?(?:call|phone)\\s*(karo|kar\\s*do|laga\\s*do|lagao|milao|mil\\s*do)?\\s*$").matcher(s);
-            if (wc.find()) {
-                String who = tidy(wc.group(1));
-                boolean video = s.contains("video");
-                if (!who.isEmpty())
-                    return new Hit(ur ? who + " ko WhatsApp call kar raha hoon." : "Calling " + who + " on WhatsApp.", "whatsapp_call",
-                            new JSONObject().put("contact", who).put("video", video).toString());
-            }
-            Matcher ph = Pattern.compile("(.+?)\\s+ko\\s+(?:phone|call|फोन|कॉल)\\s*(karo|kar\\s*do|laga\\s*do|lagao|milao|mil\\s*do)?\\s*$").matcher(s);
-            if (ph.find()) {
-                String who = tidy(ph.group(1));
-                if (!who.isEmpty())
-                    return new Hit(ur ? who + " ko call kar raha hoon." : "Calling " + who + ".", "phone_call",
-                            new JSONObject().put("contact", who).toString());
-            }
-            Matcher ph2 = Pattern.compile("^(?:call|phone|dial|फोन|कॉल)\\s+(?:karo\\s+)?(.+?)\\s*$").matcher(s);
-            if (ph2.find()) {
-                String who = tidy(ph2.group(1));
-                if (!who.isEmpty() && !who.equals("karo"))
-                    return new Hit(ur ? who + " ko call kar raha hoon." : "Calling " + who + ".", "phone_call",
-                            new JSONObject().put("contact", who).toString());
-            }
-            // ---- open an app ------------------------------------------------------------------
-            Matcher op = Pattern.compile("^(?:open|kholo|khol|launch|start|chalao|चालू करो|खोलो)\\s+(.+?)\\s*$").matcher(s);
-            if (!op.find()) op = Pattern.compile("^(.+?)\\s*(?:kholo|khol\\s*do|open\\s*karo|chala\\s*do|खोलो)\\s*$").matcher(s);
-            if (op.find()) {
-                String app = tidy(op.group(1));
-                if (!app.isEmpty() && app.length() < 40 && !app.matches(".*\\b(url|link|website|browser|https?).*"))
-                    return new Hit(ur ? app + " khol raha hoon." : "Opening " + app + ".", "open_app",
-                            new JSONObject().put("name", app).toString());
-            }
+            // Everything that DOES something on the phone is left to the assistant itself: it looks at the
+            // screen and drives the phone the way the user does. A hidden shortcut per task was the old
+            // system — two ways to do one thing, one of them blind. Only pure questions stay instant here.
         } catch (Throwable ignored) {}
         return null;
     }

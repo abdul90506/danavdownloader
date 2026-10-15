@@ -903,8 +903,6 @@
       ${row('layers', 'Show over other apps', 'The small Danav circle while you use other apps — and it lets Danav open other apps in the background', st.overlay, 'overlay')}
       ${row('apps', 'Open other apps', st.apps ? 'Danav can bring apps to the front and take you to the right screen' : esc(st.why || 'Turn on Phone control above (or “Show over other apps”): Android blocks background apps from opening other apps without it'), st.apps, st.access ? 'overlay' : 'access')}
       <div class="lk-row"><div class="lk-t"><b>Test phone control</b><small id="pcProve">Opens Settings for a moment and tells you honestly whether Danav really got it on screen — then comes back here.</small></div><button class="lk-go" data-v="prove" aria-label="Test phone control">${ic('bolt')}</button></div>
-      ${row('contacts', 'Contacts', 'Message and call people by name', st.contacts, 'contacts')}
-      ${row('call', 'Phone calls', 'Call directly without opening the dialer', st.calls, 'calls')}
       ${row('mic', 'Microphone', 'Talk to Danav', st.mic, 'mic')}
       ${row('battery', 'No battery limits', 'Keeps the volume-up shortcut working in the background', st.battery, 'battery')}
       <div class="sub-h">What Danav remembers</div>

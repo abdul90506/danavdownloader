@@ -59,59 +59,49 @@ final class Phone {
      */
     static JSONArray toolsFor(boolean wake, boolean apps) throws Exception {
         JSONArray f = new JSONArray();
-        f.put(fn("whatsapp_message", "Send a WhatsApp message to a person by name (or number). Sends it right away. If the phone's contacts don't have the name, the app searches inside WhatsApp itself, so never say \"not found\" without this call.",
-                p("contact", "Contact name as the user said it, or a phone number"), p("message", "The message text, in the language/script the user wants"), req("contact", "message")));
-        f.put(fn("whatsapp_call", "Start a WhatsApp voice or video call with a person and then really talk with them on it: Danav speaks out of the loudspeaker and hears them back through the microphone, "
-                        + "so it is a two-way conversation. If the phone's contacts don't have the name, the app searches inside WhatsApp itself. Use this whenever the user asks you to call somebody on WhatsApp, "
-                        + "to talk to them, to ask them something, to convince them or to explain something. Put the user's instruction in task (and what to open with in say).",
-                p("contact", "Contact name or number"), pb("video", "true for a video call"),
-                p("say", "What to say as soon as the call connects, in the user's words"), p("task", "What the user wants you to talk about / ask / convince them of"),
-                req("contact")));
-        f.put(fn("say_on_call", "Say something out loud on the call that is already running (your own words, speakable in a second).",
-                p("text", "Exactly what to say, in the user's language"), req("text")));
-        f.put(fn("hangup_call", "End the WhatsApp / phone call that is on screen now.", req()));
-        f.put(fn("phone_call", "Place a normal phone call to a contact name or number.", p("contact", "Contact name or number"), req("contact")));
-        f.put(fn("sms_message", "Send a normal text message (SMS).", p("contact", "Contact name or number"), p("message", "Message text"), req("contact", "message")));
-        f.put(fn("send_email", "Write and send an email (Gmail).", p("to", "Email address or contact name"), p("subject", "Subject"), p("body", "Email body"), req("to", "body")));
-        f.put(fn("youtube_play", "Find and play a video or song on YouTube.", p("query", "What to play"), req("query")));
-        f.put(fn("open_app", "Open an installed app by its name.", p("name", "App name, e.g. Instagram, Camera, Settings"), req("name")));
-        f.put(fn("media_control", "Control music / video that is playing in any app.", pe("action", "play, pause, next, previous, stop", "play", "pause", "next", "previous", "stop"), req("action")));
-        f.put(fn("navigate", "Directions or map search in Google Maps.", p("destination", "Place or address"), pe("mode", "Travel mode", "driving", "walking", "transit", "bike"), req("destination")));
-        f.put(fn("open_settings", "Open a settings page; then use read_screen / tap to change the setting.",
-                pe("page", "Which page", "main", "wifi", "bluetooth", "mobile_data", "hotspot", "airplane", "display", "sound", "battery", "location", "apps", "notifications",
-                        "storage", "security", "accessibility", "date_time", "language", "nfc", "dnd", "about", "danav"), req("page")));
-        f.put(fn("set_volume", "Change a volume.", pe("stream", "Which volume", "media", "ring", "alarm", "call"), p("level", "0-100, or up / down / mute / max"), req("level")));
-        f.put(fn("flashlight", "Turn the flashlight on or off.", pb("on", "true = on"), req("on")));
-        f.put(fn("set_alarm", "Set an alarm.", pi("hour", "0-23"), pi("minute", "0-59"), p("label", "Optional label"), req("hour", "minute")));
-        f.put(fn("set_timer", "Start a countdown timer.", pi("seconds", "Length in seconds"), p("label", "Optional label"), req("seconds")));
-        f.put(fn("read_screen", "Read everything on the screen as text with a number before each item. Use the numbers with tap (\"7\") and type_text.", req()));
-        f.put(fn("see_screen", "Look at the screen as a picture. The screenshot is sent to you and you can see it. "
-                + "Use it when read_screen looks empty, wrong or confusing (apps that draw their own UI: games, Reels, stories, chat apps), "
-                + "when you need to check a colour, an image, an icon or what actually happened after a tap, or right before a tricky tap.", req()));
-        f.put(fn("tap", "Tap something on screen: the number from read_screen, or its visible text. Works on things further down a list too (it scrolls to find them).",
-                p("target", "Number like 7, or text like Send"), pb("long_press", "Long-press instead"), pb("double", "Double-tap instead"), req("target")));
-        f.put(fn("tap_xy", "Tap an exact spot on the screen (use only when read_screen can't name the thing, e.g. a custom drawing). Use the same scale as the screenshot: x,y as screen fractions 0-1 or percentages like 45%,70%.",
-                p("x", "X position: 0-1 fraction, e.g. 0.45"), p("y", "Y position: 0-1 fraction, e.g. 0.7"), pb("long_press", "Long-press instead"), req("x", "y")));
-        f.put(fn("drag", "Slide / drag on the screen — sliders, brightness, volume panels, holding a button, swiping a notification or a story. Give start and end points (fractions like 0.2,0.8 or numbers or node targets).",
-                p("from", "Start point, e.g. \"0.2,0.8\" or the text of the element"), p("to", "End point, e.g. \"0.8,0.8\""), pi("ms", "How long the drag takes in milliseconds, default 500"), req("from", "to")));
-        f.put(fn("set_slider", "Move a slider (music position, volume, brightness, video quality) to an exact value between 0 and 100.",
-                p("target", "The slider: its number from read_screen, or nearby text"), pi("value", "0-100"), req("target", "value")));
-        f.put(fn("type_text", "Type text into an input field (the focused one, or the given target).", p("text", "Text to type"), p("target", "Optional field number or text"),
-                pb("submit", "Press enter / search / send after typing"), req("text")));
-        f.put(fn("scroll", "Scroll the screen a little (lists, feeds).", pe("direction", "Direction", "down", "up", "left", "right"), p("target", "Optional list number"), req("direction")));
-        f.put(fn("swipe", "Move a whole page at a time — photos, stories, carousels, pages in an app, Reels/Shorts, or several screens of a list at once. Smoother and more accurate than repeated taps.",
-                pe("direction", "Which way the page moves", "left", "right", "up", "down"), pi("pages", "How many pages (default 1)"), p("target", "Optional list / area number"), req("direction")));
-        f.put(fn("system_action", "Phone buttons and panels.", pe("action", "Action", "back", "home", "recents", "notifications", "quick_settings", "lock", "screenshot", "power_menu"), req("action")));
-        f.put(fn("open_url", "Open a website or link.", p("url", "Full URL"), req("url")));
-        f.put(fn("web_search", "Search the web for current information.", p("query", "Search query"), req("query")));
+        // ---------------------------------------------------------------- eyes
+        f.put(fn("read_screen", "Read everything written on the screen right now, with the exact words of every button, label, message and field, and the size of the screen. This is your first look at every task."));
+        f.put(fn("see_screen", "Look at the screen as a picture. Use it whenever words are not enough — chats, photos, videos, games, maps, custom apps. The picture comes back to you in the next message; look at it before deciding the next step."));
+        f.put(fn("phone_state", "What the phone is doing right now: the app on screen, whether a call is running, whether sound is playing, battery, lock state and screen size. Call it when you need to know the situation before acting."));
+        // ---------------------------------------------------------------- hands (the same ones a person uses)
+        f.put(fn("open_app", "Open any app on this phone by name (WhatsApp, YouTube, Chrome, Settings, Clock, Maps, Camera, anything the user has). The phone must be unlocked. Then look at the screen and carry on.",
+                p("name", "The app's name as the user says it, or its package name")));
+        f.put(fn("open_url", "Open a link (http/https) in the phone's browser or the app that handles it.", p("url", "Full http(s) address")));
+        f.put(fn("tap", "Tap something on the screen, found by the words on it — exactly as read_screen shows them. Use tap_xy only when the thing has no text (an icon, a picture, a button in a game).",
+                p("target", "The text written on the thing to tap (or its closest label)")));
+        f.put(fn("tap_xy", "Tap a point on the screen. Give fractions of the screen (0.5,0.9) or pixels; read_screen tells you the screen size.",
+                p("x", "Across: fraction 0-1 or pixels"), p("y", "Down: fraction 0-1 or pixels")));
+        f.put(fn("long_press", "Press and hold a thing on the screen (opens menus, selects, starts drag modes).", p("target", "The text written on it")));
+        f.put(fn("type_text", "Type text into the field that is on screen (whatsapp, search boxes, browsers, notes, any app). It clicks the field first, types, and checks the words really landed.",
+                p("text", "The exact text to type"), pb("submit", "true to press the keyboard's Search/Send/Go key after typing")));
+        f.put(fn("key", "Press one of the phone's own keys, whatever is on screen.",
+                pe("action", "Which key", "back", "home", "recents", "enter", "notifications", "quick_settings", "lock", "screenshot", "wake", "volume_up", "volume_down", "volume_mute", "play_pause", "next", "previous")));
+        f.put(fn("scroll", "Move within a scrollable screen (a list, a chat, a page) by a small amount. Scroll and look again instead of assuming something is missing.",
+                pe("dir", "Which way", "down", "up", "left", "right"), p("target", "Optional: the list or area to scroll inside")));
+        f.put(fn("swipe", "Move whole pages — photos, stories, reels, a gallery, a carousel.",
+                pe("dir", "Which way", "left", "right", "up", "down"), pi("pages", "How many pages (1-8)"), p("target", "Optional: the area to swipe inside")));
+        f.put(fn("drag", "Drag one thing onto another: sliders, progress bars, dragging items, drawing (patterns, games).",
+                p("from", "Where to start (a label, or \"x,y\")"), p("to", "Where to drop (a label, or \"x,y\")"), pi("ms", "Optional: how slowly, in milliseconds")));
+        f.put(fn("set_slider", "Set a slider on the screen to a value (brightness, volume page, seek bar).", p("target", "Optional: which slider"), pi("value", "0-100")));
+        f.put(fn("wait", "Wait for a slow screen (a page loading, a video opening a call, an app starting) before looking again. Never guess: wait, then look.",
+                p("seconds", "How long, 0.2 to 15")));
+        // ---------------------------------------------------------------- thinking, memory, web
         f.put(fn("recall", "Look up what you have already done on this phone and what you remember about the user. Call it when the user asks what you did, why something happened, or which step is left — never say you have not done something that is listed here.",
                 p("what", "\"actions\", \"memory\" or \"both\" (default: both)")));
-        f.put(fn("remember", "Save one short personal fact about the user so later calls and chats feel personal (name, city, language, family, work, routine, likes, "
-                        + "dislikes, how they want answers). Call it silently whenever you learn something durable — never announce it or repeat it back.",
-                p("note", "One short sentence in the third person, e.g. \"Speaks Roman Urdu and works nights\""), req("note")));
-        f.put(fn("forget", "Delete a saved personal note that is wrong or that the user asks to drop.", p("query", "Words from the note to delete"), req("query")));
-        f.put(fn("end_call", "End this Danav call — only when the user says bye, bas or band karo.", req()));
-        if (wake) f.put(fn("dismiss", "The phone started listening by mistake: nobody called Danav. Ends quietly.", req()));
+        f.put(fn("web_search", "Search the internet when the answer depends on current facts, or when you need to know how something is done.", p("queries", "1 to 3 search queries")));
+        f.put(fn("read_page", "Open a web page and read it.", p("url", "Full http(s) address")));
+        f.put(fn("remember", "Save one short personal fact about the user (name, city, language, people, work, routine, likes, how they want answers). Call it silently; never announce it.",
+                p("note", "One short sentence in the third person")));
+        f.put(fn("forget", "Delete a saved personal note that is wrong or that the user asks to drop.", p("query", "Words from the note")));
+        // ---------------------------------------------------------------- taking part in a call
+        f.put(fn("join_call", "Take part in the call that is on the screen right now — WhatsApp, the phone app, or any app: you hear the other person through the loudspeaker and your voice goes to them, and you answer them yourself like a person. "
+                        + "Start a call the normal way first (open the app, find the person, press its call button), then join it.",
+                p("task", "What the user wants from this call, in one sentence"), p("say", "Optional: the first thing to say when they answer")));
+        f.put(fn("leave_call", "Stop taking part in the call that is running (the user takes the phone back)."));
+        f.put(fn("say_on_call", "Say something out loud on the call you have joined, right now — used when the user tells you what to say while you are on a call.", p("text", "The words to say")));
+        // ---------------------------------------------------------------- this Danav session
+        f.put(fn("end_call", "End the Danav call (when the user is finished with you)."));
+        f.put(fn("dismiss", "Put Danav away (when the user says goodbye, go away or stop listening)."));
         return new JSONArray().put(new JSONObject().put("functionDeclarations", f));
     }
 
@@ -138,39 +128,29 @@ final class Phone {
 
     /** Short caption for the call screen while a tool runs. */
     static String label(String name, JSONObject a) {
+        if (a == null) return "";
         switch (name) {
-            case "whatsapp_message": return "WhatsApp → " + a.optString("contact");
-            case "whatsapp_call": return "WhatsApp call → " + a.optString("contact");
-            case "say_on_call": return "Saying it on the call";
-            case "hangup_call": return "Ending the call";
-            case "swipe": return "Swiping " + a.optString("direction");
-            case "phone_call": return "Calling " + a.optString("contact");
-            case "sms_message": return "SMS → " + a.optString("contact");
-            case "send_email": return "Email → " + a.optString("to");
-            case "youtube_play": return "YouTube: " + a.optString("query");
-            case "open_app": return "Opening " + a.optString("name");
-            case "media_control": return "Media: " + a.optString("action");
-            case "navigate": return "Maps: " + a.optString("destination");
-            case "open_settings": return "Settings: " + a.optString("page");
-            case "set_volume": return "Volume";
-            case "flashlight": return a.optBoolean("on") ? "Flashlight on" : "Flashlight off";
-            case "set_alarm": return "Alarm";
-            case "set_timer": return "Timer";
-            case "read_screen": return "Looking at the screen";
-            case "see_screen": return "Looking at the screen";
-            case "tap": return "Tap: " + a.optString("target");
-            case "tap_xy": return "Tapping";
-            case "drag": return "Sliding";
-            case "set_slider": return "Sliding to " + a.optInt("value", 50) + "%";
-            case "type_text": return "Typing";
-            case "scroll": return "Scrolling";
-            case "system_action": return a.optString("action").replace('_', ' ');
+            case "read_screen": case "see_screen": case "phone_state": return "Looking at the screen";
+            case "open_app": return "Opening " + a.optString("name", a.optString("app"));
             case "open_url": return "Opening link";
-            case "web_search": return "Searching: " + a.optString("query");
+            case "tap": case "long_press": return (name.equals("long_press") ? "Holding " : "Tapping ") + a.optString("target");
+            case "tap_xy": return "Tapping";
+            case "type_text": return "Typing";
+            case "key": return a.optString("action").replace('_', ' ');
+            case "scroll": case "swipe": return (name.equals("swipe") ? "Swiping " : "Scrolling ") + a.optString("dir", "down");
+            case "drag": return "Dragging";
+            case "set_slider": return "Moving a slider";
+            case "wait": return "Waiting";
+            case "web_search": return "Searching: " + a.optString("queries", a.optString("query", ""));
+            case "read_page": return "Reading a page";
+            case "join_call": return "Joining the call";
+            case "leave_call": return "Leaving the call";
+            case "say_on_call": return "Saying it on the call";
             case "remember": case "forget": return "";      // personalisation stays silent
             default: return "";
         }
     }
+
 
     // ------------------------------------------------------------------ running a tool
 
@@ -211,15 +191,27 @@ final class Phone {
     /** A failure that also tells the model to look at the screen and find another way. */
     private static Out badLook(String t) { return new Out(t, true, false, false, false); }
 
+    /** True when a tool changes what is on the screen (so a fresh picture must follow it). */
+    static boolean isScreenTool(String name) {
+        if (name == null) return false;
+        switch (name) {
+            case "tap": case "tap_xy": case "long_press": case "type_text": case "key": case "scroll":
+            case "swipe": case "drag": case "set_slider": case "open_app": case "open_url": case "wait":
+                return true;
+            default: return false;
+        }
+    }
+
     /** True for every tool this class runs (used by the chat, which offers the same phone control). */
     static boolean isPhoneTool(String name) {
         if (name == null) return false;
         for (String n : TOOLS) if (n.equals(name)) return true;
         return false;
     }
-    private static final String[] TOOLS = {"recall", "whatsapp_message", "whatsapp_call", "say_on_call", "hangup_call", "phone_call", "sms_message", "send_email",
-            "youtube_play", "open_app", "media_control", "navigate", "open_settings", "set_volume", "flashlight", "set_alarm", "set_timer", "read_screen", "see_screen",
-            "tap", "tap_xy", "drag", "set_slider", "type_text", "scroll", "swipe", "system_action", "open_url", "web_search", "remember", "forget", "end_call", "dismiss"};
+    /** Every tool this class runs. Nothing here is about one task: they are hands, eyes and memory. */
+    private static final String[] TOOLS = {"read_screen", "see_screen", "phone_state", "open_app", "open_url", "tap", "tap_xy", "long_press",
+            "type_text", "key", "scroll", "swipe", "drag", "set_slider", "wait", "recall", "web_search", "read_page", "remember", "forget",
+            "join_call", "leave_call", "say_on_call", "end_call", "dismiss"};
 
     private static final String NEED_ACCESS = "Phone control is off. Tell the user to turn on Danav in Settings → Accessibility (Danav app → Danav AI → Phone control).";
 
@@ -236,44 +228,42 @@ final class Phone {
     private static Out runTool(Context c, String name, JSONObject a) {
         try {
             switch (name) {
-                case "recall": return recall(c, a == null ? "" : a.optString("what", "both"));
-                case "whatsapp_message": return whatsapp(c, a.optString("contact"), a.optString("message"));
-                case "whatsapp_call": return whatsappCall(c, a.optString("contact"), a.optBoolean("video"), a.optString("say"), a.optString("task"));
+                // ---- eyes
+                case "read_screen": return readScreen();
+                case "see_screen": return seeScreen();
+                case "phone_state": return phoneState(c);
+                // ---- hands
+                case "open_app": return openApp(c, a.optString("name", a.optString("app")));
+                case "open_url": return openUrl(c, a.optString("url"));
+                case "tap": return tap(a.optString("target"), false);
+                case "tap_xy": return tapXY(a.optString("x"), a.optString("y"), false);
+                case "long_press": return tap(a.optString("target"), true);
+                case "type_text": return type(a.optString("text"), a.optString("target"), a.optBoolean("submit"));
+                case "key": return key(a.optString("action"));
+                case "scroll": return scroll(a.optString("dir", "down"), a.optString("target"));
+                case "swipe": return swipe(a.optString("dir", "left"), a.optInt("pages", 1), a.optString("target"));
+                case "drag": return drag(a.optString("from"), a.optString("to"), a.optInt("ms", 700));
+                case "set_slider": return setSlider(a.optString("target"), a.optInt("value", 50));
+                case "wait": return waitFor(a.optString("seconds", "1"));
+                // ---- brain / memory / web
+                case "recall": return recall(c, a.optString("what", "both"));
+                case "web_search": return search(a.optString("queries", a.optString("query", "")));
+                case "read_page": return readPage(a.optString("url"));
+                case "remember": {
+                    boolean saved = Memory.add(c, a.optString("note", a.optString("text", "")));
+                    if (saved) return new Out("Saved silently. Do not mention it.", false).as(true);
+                    return bad("Nothing new to save.");
+                }
+                case "forget": return new Out(Memory.forget(c, a.optString("query", a.optString("note", ""))) + " note(s) forgotten. Do not mention it.", false);
+                // ---- taking part in a call (any app)
+                case "join_call": return joinCall(c, a.optString("task"), a.optString("say"));
+                case "leave_call": return leaveCall();
                 case "say_on_call": {
                     boolean ok = LiveCall.say(a.optString("text"));
                     if (ok) return new Out("Said out loud on the call. Do not repeat it.", false).as(true);
                     return bad("There is no call running to speak on.");
                 }
-                case "hangup_call": return hangup(c);
-                case "phone_call": return call(c, a.optString("contact"));
-                case "sms_message": return sms(c, a.optString("contact"), a.optString("message"));
-                case "send_email": return email(c, a.optString("to"), a.optString("subject"), a.optString("body"));
-                case "youtube_play": return youtube(c, a.optString("query"));
-                case "open_app": return openApp(c, a.optString("name"));
-                case "media_control": return media(c, a.optString("action"));
-                case "navigate": return navigate(c, a.optString("destination"), a.optString("mode"));
-                case "open_settings": return settings(c, a.optString("page"));
-                case "set_volume": return volume(c, a.optString("stream", "media"), a.optString("level"));
-                case "flashlight": return torch(c, a.optBoolean("on", true));
-                case "set_alarm": return alarm(c, a.optInt("hour", -1), a.optInt("minute", 0), a.optString("label"));
-                case "set_timer": return timer(c, a.optInt("seconds", 0), a.optString("label"));
-                case "read_screen": return readScreen();
-                case "see_screen": return seeScreen();
-                case "tap": return tap(a.optString("target"), a.optBoolean("long_press"), a.optBoolean("double"));
-                case "tap_xy": return tapXY(a.optString("x"), a.optString("y"), a.optBoolean("long_press"));
-                case "drag": return drag(a.optString("from"), a.optString("to"), a.optInt("ms", 500));
-                case "set_slider": return setSlider(a.optString("target"), a.optInt("value", 50));
-                case "type_text": return type(a.optString("text"), a.optString("target"), a.optBoolean("submit"));
-                case "scroll": return scroll(a.optString("direction", "down"), a.optString("target"));
-                case "swipe": return swipe(a.optString("direction", "left"), a.optInt("pages", 1), a.optString("target"));
-                case "system_action": return system(a.optString("action"));
-                case "open_url": return openUrl(c, a.optString("url"));
-                case "web_search": return search(a.optString("query"));
-                case "remember": {
-                    boolean saved = Memory.add(c, a.optString("note", a.optString("text", "")));
-                    return saved ? new Out("Saved silently. Do not mention it.", false).as(true) : bad("Nothing new to save.");
-                }
-                case "forget": return new Out(Memory.forget(c, a.optString("query", a.optString("note", ""))) + " note(s) forgotten. Do not mention it.", false);
+                // ---- this Danav session
                 case "end_call": return new Out("Ending the call.", false, true, false);
                 case "dismiss": return new Out("ok", false, true, true);
                 default: return bad("Unknown tool.");
@@ -404,172 +394,11 @@ final class Phone {
         return prev[b.length()];
     }
 
-    private static int contactsRead = 0;
-    private static long namesAt = 0;
-    private static final List<String> allNames = new ArrayList<>();
 
-    /** How many contacts were read the last time (the honest number used in the messages). */
-    static int contactsRead() { return contactsRead; }
 
-    /** Every contact name, read once and kept for a minute, for "did you mean …" suggestions. */
-    private static List<String> names(Context c, boolean email) {
-        if (System.currentTimeMillis() - namesAt < 60_000 && !allNames.isEmpty()) return allNames;
-        allNames.clear();
-        if (!has(c, Manifest.permission.READ_CONTACTS)) return allNames;
-        try (Cursor cur = c.getContentResolver().query(ContactsContract.Contacts.CONTENT_URI,
-                new String[]{ContactsContract.Contacts.DISPLAY_NAME}, null, null, null)) {
-            int n = 0;
-            while (cur != null && cur.moveToNext()) {
-                String name = cur.getString(0);
-                if (name == null || name.trim().isEmpty()) continue;
-                n++;
-                if (!allNames.contains(name)) allNames.add(name);
-            }
-            contactsRead = n;
-            namesAt = System.currentTimeMillis();
-        } catch (Throwable ignored) {}
-        return allNames;
-    }
 
-    /** Up to three names closest to what was said — so the reply can say "did you mean …" instead of "not found". */
-    private static String closest(Context c, String q, boolean email) {
-        String sk = skel(q);
-        if (sk.length() < 3) return "";
-        String bestA = "", bestB = "", bestC = "";
-        int da = 99, db = 99, dc = 99;
-        for (String name : names(c, email)) {
-            String sn = skel(name);
-            if (sn.length() < 3) continue;
-            int d = sn.startsWith(sk.substring(0, Math.min(3, sk.length()))) ? Math.max(1, lev(sn, sk) - 2)
-                    : Math.min(lev(sn, sk), Math.max(sn.length(), sk.length()));
-            if (d < da) { dc = db; bestC = bestB; db = da; bestB = bestA; da = d; bestA = name; }
-            else if (d < db) { dc = db; bestC = bestB; db = d; bestB = name; }
-            else if (d < dc) { dc = d; bestC = name; }
-        }
-        if (bestA.isEmpty()) return "";
-        StringBuilder b = new StringBuilder(bestA);
-        if (!bestB.isEmpty()) b.append(", ").append(bestB);
-        if (!bestC.isEmpty()) b.append(", ").append(bestC);
-        return b.toString();
-    }
 
-    /** People whose name matches, best first (one entry per contact, the mobile / primary number). */
-    static List<Person> people(Context c, String q, boolean email) {
-        List<Person> out = new ArrayList<>();
-        if (!has(c, Manifest.permission.READ_CONTACTS)) return out;
-        Uri uri = email ? ContactsContract.CommonDataKinds.Email.CONTENT_URI : ContactsContract.CommonDataKinds.Phone.CONTENT_URI;
-        String data = email ? ContactsContract.CommonDataKinds.Email.ADDRESS : ContactsContract.CommonDataKinds.Phone.NUMBER;
-        String[] cols = {ContactsContract.Data.CONTACT_ID, ContactsContract.Data.DISPLAY_NAME, data, ContactsContract.Data.IS_PRIMARY, ContactsContract.Data.DATA2, ContactsContract.Data.TIMES_CONTACTED};
-        Map<Long, Person> by = new LinkedHashMap<>();
-        Map<Long, Integer> rank = new HashMap<>();
-        try (Cursor cur = c.getContentResolver().query(uri, cols, null, null, null)) {
-            while (cur != null && cur.moveToNext()) {
-                String name = cur.getString(1), val = cur.getString(2);
-                if (name == null || val == null) continue;
-                int s = score(name, q);
-                if (s == 0) continue;
-                long id = cur.getLong(0);
-                int r = (cur.getInt(3) > 0 ? 4 : 0) + (!email && cur.getInt(4) == ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE ? 2 : 0);
-                Person p = by.get(id);
-                if (p == null || r > rank.get(id)) {
-                    if (p == null) { p = new Person(); by.put(id, p); }
-                    p.id = id; p.name = name; p.score = s;
-                    if (email) p.email = val; else p.number = val;
-                    rank.put(id, r);
-                }
-            }
-        } catch (Exception ignored) {}
-        // the phone's own fuzzy search — it also matches a name that is written differently, which the
-        // plain comparison above can miss
-        try (Cursor cur = c.getContentResolver().query(
-                Uri.withAppendedPath(ContactsContract.CommonDataKinds.Phone.CONTENT_FILTER_URI, Uri.encode(q)), cols, null, null, null)) {
-            while (cur != null && cur.moveToNext()) {
-                String name = cur.getString(1), val = cur.getString(2);
-                if (name == null || val == null) continue;
-                long id = cur.getLong(0);
-                if (by.containsKey(id)) continue;
-                Person p = new Person();
-                p.id = id; p.name = name; p.number = val; p.score = Math.max(58, score(name, q));
-                by.put(id, p);
-            }
-        } catch (Throwable ignored) {}
-        out.addAll(by.values());
-        out.sort((x, y) -> y.score - x.score);
-        return out;
-    }
 
-    /** Picks one person or explains what to ask (several matches / none / no permission). */
-    private static Object pick(Context c, String who, boolean email) {
-        String w = who == null ? "" : who.trim();
-        if (w.isEmpty()) return "No contact given — ask the user who.";
-        if (email && w.contains("@")) { Person p = new Person(); p.name = w; p.email = w; return p; }
-        if (!email && w.replaceAll("[\\s\\-()]", "").matches("\\+?\\d{5,15}")) { Person p = new Person(); p.name = w; p.number = w.replaceAll("[\\s\\-()]", ""); return p; }
-        if (!has(c, Manifest.permission.READ_CONTACTS))
-            return "The phone's own contacts are NOT readable — Contacts permission is off for Danav AI (Phone control → Contacts). "
-                    + "Say that plainly and ask for it (or the number); meanwhile the app can still search inside WhatsApp itself.";
-        List<Person> l = people(c, w, email);
-        if (l.isEmpty()) {
-            String near = closest(c, w, email);
-            return "Contacts permission is fine and " + contactsRead() + " contacts were read from this phone, but no saved name matches \"" + w + "\""
-                    + (near.isEmpty() ? "" : " (closest: " + near + ")")
-                    + (email ? " with an email address" : "")
-                    + ". The app now searches inside WhatsApp itself — if that finds nothing either, ask the user for the number or how the name is saved there.";
-        }
-        // only people we can really reach — an empty number must never turn into a guessed one
-        List<Person> usable = new ArrayList<>();
-        for (Person p : l) if (email ? (p.email != null && p.email.contains("@")) : validNumber(p.number)) usable.add(p);
-        if (usable.isEmpty()) {
-            String near = closest(c, w, email);
-            return "A contact called \"" + l.get(0).name + "\" exists but has no " + (email ? "email address" : "phone number") + " saved"
-                    + (near.isEmpty() || near.equals(l.get(0).name) ? "" : " (others close to \"" + w + "\": " + near + ")")
-                    + ". Ask the user for the " + (email ? "address." : "number.");
-        }
-        Person top = usable.get(0);
-        int same = 0;
-        for (Person p : usable) if (norm(p.name).equals(norm(top.name))) same++;
-        if (same > 1)
-            return "There are " + same + " contacts called \"" + top.name + "\" on this phone. Ask the user which one (the number or how they know them) before doing anything — do not guess.";
-        List<Person> close = new ArrayList<>();
-        for (Person p : usable) if (p == top || (p.score == top.score && !norm(p.name).equals(norm(top.name)))) close.add(p);
-        if (close.size() > 1 && top.score < 100) {
-            StringBuilder sb = new StringBuilder("Several contacts match \"" + w + "\": ");
-            for (int i = 0; i < Math.min(5, close.size()); i++) sb.append(i > 0 ? ", " : "").append(close.get(i).name);
-            return sb.append(". Ask the user which one, then call the tool again with the full name.").toString();
-        }
-        return top;
-    }
-
-    private static final Map<String, String> CC = new HashMap<>();
-    static {
-        String[] t = {"pk", "92", "in", "91", "bd", "880", "ae", "971", "sa", "966", "us", "1", "ca", "1", "gb", "44", "qa", "974", "om", "968", "kw", "965", "bh", "973",
-                "af", "93", "tr", "90", "my", "60", "de", "49", "fr", "33", "it", "39", "es", "34", "au", "61", "cn", "86", "ir", "98", "eg", "20", "ng", "234", "za", "27",
-                "lk", "94", "np", "977", "id", "62", "jp", "81", "kr", "82", "ru", "7", "br", "55", "mx", "52", "nl", "31", "se", "46", "no", "47", "ie", "353", "nz", "64", "sg", "65"};
-        for (int i = 0; i < t.length; i += 2) CC.put(t[i], t[i + 1]);
-    }
-
-    static boolean validNumber(String number) {
-        return number != null && number.replaceAll("\\D", "").length() >= 7;
-    }
-
-    /** International digits for wa.me (03001234567 → 923001234567 on a Pakistani SIM). "" = not a phone number. */
-    static String intl(Context c, String number) {
-        String n = number == null ? "" : number.replaceAll("[^\\d+]", "");
-        if (n.startsWith("+")) n = n.substring(1);
-        else if (n.startsWith("00")) n = n.substring(2);
-        if (n.replaceAll("\\D", "").length() < 7) return "";      // never make a number up out of nothing
-        String iso = "";
-        try {
-            TelephonyManager tm = (TelephonyManager) c.getSystemService(Context.TELEPHONY_SERVICE);
-            iso = tm.getSimCountryIso();
-            if (iso == null || iso.isEmpty()) iso = tm.getNetworkCountryIso();
-        } catch (Exception ignored) {}
-        if (iso == null || iso.isEmpty()) iso = Locale.getDefault().getCountry();
-        String cc = CC.get(iso.toLowerCase(Locale.ROOT));
-        if (cc == null) return n.replaceFirst("^0", "");
-        if (n.startsWith("0")) return cc + n.substring(1);
-        if (n.startsWith(cc) && n.length() > 10) return n;
-        return cc + n;
-    }
 
     // ------------------------------------------------------------------ helpers
 
@@ -745,380 +574,24 @@ final class Phone {
 
     // ------------------------------------------------------------------ messaging & calls
 
-    private static Out whatsapp(Context c, String who, String msg) {
-        String pkg = installed(c, WA) ? WA : installed(c, WA_B) ? WA_B : null;
-        if (pkg == null) return bad("WhatsApp isn't installed on this phone.");
-        if (msg == null || msg.trim().isEmpty()) return bad("No message text — ask what to send.");
-        DanavAccess s = DanavAccess.me;
-        StringBuilder note = new StringBuilder();
-        Object o = pick(c, who, false);
-        Person p = o instanceof Person ? (Person) o : null;
-        String num = p == null ? "" : intl(c, p.number);
-        if (p == null && o instanceof String) note.append(String.valueOf(o)).append(' ');
-
-        // 1) the phone's own contacts: fastest, opens exactly that chat
-        if (p != null && !num.isEmpty()) {
-            start(c, new Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=" + num + "&text=" + enc(msg))).setPackage(pkg));
-            if (s == null) return bad("Opened the WhatsApp chat with " + p.name + " with the message typed, but it was NOT sent because phone control is off: the user has to tap Send. " + NEED_ACCESS);
-            // WhatsApp was started straight from here, so prove it is really on screen before touching it —
-            // otherwise every later step fails in a confusing way ("chat not found") when WhatsApp never opened
-            if (!waitForPkg(s, pkg, 7000))
-                return badLook("WhatsApp did not come to the front at all — the screen is still showing " + onScreen()
-                        + ", so nothing was sent. " + startProblem(c));
-            AccessibilityNodeInfo send = s.waitFor(pkg, new String[]{pkg + ":id/send"}, new String[]{"Send"}, 9000);
-            if (send != null) {
-                String title = chatTitle(s, pkg);
-                if (title == null || titleMatches(title, p)) {
-                    if (!s.click(send, false)) return badLook("Couldn't press Send in WhatsApp." + now(s));
-                    sleep(450);
-                    AccessibilityNodeInfo box = s.waitFor(pkg, new String[]{pkg + ":id/entry"}, null, 1200);
-                    if (box != null && text(box).trim().equals(msg.trim())) return badLook("Pressed send but the message is still in the box — it did NOT go out." + now(s));
-                    return new Out("Sent to " + p.name + " on WhatsApp.", false);
-                }
-                note.append("The number saved for ").append(p.name).append(" opened a chat with \"").append(title).append("\". ");
-            } else {
-                note.append("The number saved for ").append(p.name).append(" has no WhatsApp chat. ");
-            }
-        }
-
-        // 2) WhatsApp's own search — WhatsApp contacts are often NOT in the phone's address book,
-        //    so the phone's contacts alone are never a reason to say "not found"
-        if (s == null) return new Out(note + NEED_ACCESS, false);
-        Wa w = waOpen(c, s, pkg, who);
-        if (w.opened == null) return badLook(note + w.why);
-        if (!waSend(s, pkg, msg.trim())) return badLook(note + "I opened the WhatsApp chat with " + w.opened + " but couldn't type the message into it." + now(s));
-        return new Out(note + "Sent to " + w.opened + " on WhatsApp (found by searching inside WhatsApp).", false);
-    }
 
     // ------------------------------------------------------------------ WhatsApp's own search
 
-    private static final class Wa { String opened; String why = "Nothing was opened."; }
 
-    /**
-     * Opens WhatsApp, uses its own search for the name and opens the best matching chat.
-     * This is what makes an unknown name work: the phone's address book can be empty while
-     * WhatsApp itself knows the person perfectly well.
-     */
-    private static Wa waOpen(Context c, DanavAccess s, String pkg, String who) {
-        Wa w = new Wa();
-        String q = who == null ? "" : who.trim();
-        if (q.isEmpty()) { w.why = "No name was given to look for."; return w; }
-        try {
-            start(c, c.getPackageManager().getLaunchIntentForPackage(pkg));
-            if (!waitForPkg(s, pkg, 7000)) { w.why = "WhatsApp did not come to the front at all — the screen is still showing " + onScreen() + ". " + startProblem(c); return w; }
-            s.settle(1400);
-            AccessibilityNodeInfo icon = s.waitFor(pkg,
-                    new String[]{pkg + ":id/menuitem_search", pkg + ":id/search", pkg + ":id/search_holder", pkg + ":id/search_bar", pkg + ":id/toolbar_search"},
-                    new String[]{"Search"}, 4500);
-            if (icon != null) { s.click(icon, false); sleep(700); }
-            AccessibilityNodeInfo field = s.waitFor(pkg,
-                    new String[]{pkg + ":id/search_src_text", pkg + ":id/search_input", pkg + ":id/search_edit_text", pkg + ":id/search_field", pkg + ":id/search_edit"},
-                    new String[]{"Search chats", "Search name or number", "Search"}, 4500);
-            if (field == null) field = s.find("Search", true);
-            if (field == null) { w.why = "I opened WhatsApp but couldn't find its search box." + now(s); return w; }
-            s.click(field, false);
-            sleep(250);
-            s.setText(field, q);
-            s.settle(1300);
-            List<AccessibilityNodeInfo> rows = waRows(pkg, q);
-            if (rows.isEmpty()) {
-                w.why = "I searched \"" + q + "\" inside WhatsApp myself and found no chat with that name — so ask the user for the number or how the name is saved there." + now(s);
-                return w;
-            }
-            String first = text(rows.get(0)).trim();
-            java.util.Set<String> names = new java.util.LinkedHashSet<>();
-            for (int i = 0; i < Math.min(4, rows.size()); i++) {
-                String n = text(rows.get(i)).trim();
-                if (!n.isEmpty() && score(n, q) >= 55) names.add(n);
-            }
-            if (names.size() > 1) {
-                StringBuilder sb = new StringBuilder("WhatsApp shows ").append(names.size()).append(" chats for \"").append(q).append("\": ");
-                int i = 0;
-                for (String n : names) sb.append(i++ > 0 ? ", " : "").append(n);
-                w.why = sb.append(". Ask the user which one, then do it again with the full name.").toString();
-                return w;
-            }
-            if (!s.click(rows.get(0), false)) { w.why = "I found \"" + first + "\" in WhatsApp but couldn't open the chat." + now(s); return w; }
-            s.settle(1100);
-            String title = chatTitle(s, pkg);
-            w.opened = title == null || title.trim().isEmpty() ? first : title.trim();
-            return w;
-        } catch (Throwable t) {
-            w.why = "I couldn't search inside WhatsApp (" + t.getClass().getSimpleName() + ").";
-            return w;
-        }
-    }
 
-    /** The chat rows WhatsApp is showing for that search, best match first. */
-    private static List<AccessibilityNodeInfo> waRows(String pkg, String q) {
-        DanavAccess s = DanavAccess.me;
-        List<AccessibilityNodeInfo> out = new ArrayList<>();
-        if (s == null) return out;
-        AccessibilityNodeInfo r = s.root();
-        if (r == null) return out;
-        List<AccessibilityNodeInfo> all = new ArrayList<>();
-        try {
-            for (String id : new String[]{"conversations_row_contact_name", "contact_name", "contactpicker_row_name", "chat_contact_name", "name"})
-                all.addAll(r.findAccessibilityNodeInfosByViewId(pkg + ":id/" + id));
-        } catch (Throwable ignored) {}
-        for (AccessibilityNodeInfo n : all) {
-            String t = text(n).trim();
-            if (!t.isEmpty() && score(t, q) >= 45 && !out.contains(n)) out.add(n);
-        }
-        out.sort((a, b) -> score(text(b).trim(), q) - score(text(a).trim(), q));
-        return out;
-    }
 
-    /** Types the message into the open chat and presses Send. */
-    private static boolean waSend(DanavAccess s, String pkg, String msg) {
-        AccessibilityNodeInfo entry = s.waitFor(pkg, new String[]{pkg + ":id/entry"}, new String[]{"Type a message", "Message"}, 6000);
-        if (entry == null) entry = s.find("Type a message", true);
-        if (entry == null) return false;
-        s.click(entry, false);
-        sleep(300);
-        if (!s.setText(entry, msg)) return false;
-        sleep(450);
-        AccessibilityNodeInfo send = s.waitFor(pkg, new String[]{pkg + ":id/send"}, new String[]{"Send"}, 2500);
-        if (send == null) send = s.find("Send", false);
-        if (send != null && s.click(send, false)) { sleep(500); return true; }
-        if (s.submit(entry)) { sleep(500); return true; }
-        return false;
-    }
 
-    private static Out whatsappCall(Context c, String who, boolean video, String say, String task) {
-        String pkg = installed(c, WA) ? WA : installed(c, WA_B) ? WA_B : null;
-        if (pkg == null) return bad("WhatsApp isn't installed on this phone.");
-        DanavAccess s = DanavAccess.me;
-        if (s == null) return bad(NEED_ACCESS);
-        StringBuilder note = new StringBuilder();
-        Object o = pick(c, who, false);
-        Person p = o instanceof Person ? (Person) o : null;
-        String num = p == null ? "" : intl(c, p.number);
-        String opened = null;
 
-        // 1) via the saved number, if there is one
-        if (p != null && !num.isEmpty()) {
-            start(c, new Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=" + num)).setPackage(pkg));
-            if (!waitForPkg(s, pkg, 7000))
-                return badLook("WhatsApp did not come to the front at all — the screen is still showing " + onScreen()
-                        + ", so the call was not started. " + startProblem(c));
-            AccessibilityNodeInfo b = s.waitFor(pkg, null, video ? new String[]{"Video call"} : new String[]{"Voice call", "Audio call", "Call"}, 8000);
-            String title = chatTitle(s, pkg);
-            if (b != null && (title == null || titleMatches(title, p))) {
-                if (callButton(s, pkg, video)) opened = title == null || title.trim().isEmpty() ? p.name : title.trim();
-            } else if (b == null) {
-                note.append("The number saved for ").append(p.name).append(" has no WhatsApp call button. ");
-            } else {
-                note.append("The number saved for ").append(p.name).append(" opened a chat with \"").append(title).append("\". ");
-            }
-        } else if (o instanceof String) note.append(String.valueOf(o)).append(' ');
 
-        // 2) WhatsApp's own search — how a name that isn't in the phone's contacts still works
-        if (opened == null) {
-            Wa w = waOpen(c, s, pkg, who);
-            if (w.opened == null) return badLook(note + w.why);
-            if (!callButton(s, pkg, video)) return badLook(note + "I opened the WhatsApp chat with " + w.opened + " but its call button wasn't there." + now(s));
-            opened = w.opened;
-        }
-        // 3) wait until they actually pick up — Danav must not greet a ringing phone
-        String state = waitAnswered(s, pkg, 20000);
-        if ("no".equals(state)) return badLook("The WhatsApp call to " + opened + " is ringing but nobody has picked up yet." + now(s));
-        // 4) answered: Danav stays on the line AND keeps his ears (see LiveCall.bridge)
-        LiveCall.bridge(opened, task == null ? "" : task);
-        if (say != null && !say.trim().isEmpty()) { sleep(400); LiveCall.say(say); }
-        return new Out("The WhatsApp " + (video ? "video" : "voice") + " call to " + opened + " is up and Danav is on the line, talking out of the loudspeaker. "
-                + "Danav can hear " + opened + " (their voice comes out of the loudspeaker into the microphone), so hold a real conversation: answer them in short sentences, "
-                + "one at a time, in the user's language, and never repeat a sentence. The user may speak too — the microphone belongs to the call, so the user's voice goes straight to "
-                + opened + ". If Danav cannot hear them at all, the app says so on screen; then only say the user's message. Never report any of this to the user as a message.", false);
-    }
 
-    /**
-     * Waits for the call to be answered. "yes" = a call timer is running (they picked up),
-     * "no" = it has been ringing for the whole time, "?" = we couldn't tell (treated as answered).
-     */
-    private static String waitAnswered(DanavAccess s, String pkg, long ms) {
-        long end = System.currentTimeMillis() + ms;
-        Pattern timer = Pattern.compile("\\b\\d{1,2}:\\d{2}(:\\d{2})?\\b");
-        while (System.currentTimeMillis() < end) {
-            try {
-                AccessibilityNodeInfo r = s.root();
-                if (r != null) {
-                    for (String id : new String[]{"call_duration", "duration", "call_timer", "timer"}) {
-                        List<AccessibilityNodeInfo> l = r.findAccessibilityNodeInfosByViewId(pkg + ":id/" + id);
-                        for (AccessibilityNodeInfo n : l) if (timer.matcher(text(n)).find()) return "yes";
-                    }
-                    // the running call timer is the giveaway: the screen text shows HH:MM once they pick up
-                    if (timer.matcher(s.read()).find()) return "yes";
-                }
-            } catch (Throwable ignored) {}
-            sleep(700);
-        }
-        return "no";
-    }
 
-    /** Presses the voice/video call button on the open WhatsApp chat. */
-    private static boolean callButton(DanavAccess s, String pkg, boolean video) {
-        String[] ids = video
-                ? new String[]{pkg + ":id/video_call", pkg + ":id/conversation_contact_video_call", pkg + ":id/menuitem_video_call"}
-                : new String[]{pkg + ":id/voice_call", pkg + ":id/conversation_contact_voice_call", pkg + ":id/audio_call", pkg + ":id/menuitem_voice_call"};
-        String[] words = video ? new String[]{"Video call"} : new String[]{"Voice call", "Audio call", "Call"};
-        AccessibilityNodeInfo b = s.waitFor(pkg, ids, words, 5000);
-        if (b == null) return false;
-        if (!s.click(b, false)) return false;
-        sleep(900);
-        AccessibilityNodeInfo ok = s.waitFor(pkg, null, new String[]{"Call", "CALL", "Start call"}, 1200);   // some versions confirm first
-        if (ok != null && !ok.equals(b)) s.click(ok, false);
-        return true;
-    }
 
-    /** The chat title WhatsApp is showing (null when it can't be read). */
-    private static String chatTitle(DanavAccess s, String pkg) {
-        try {
-            String[] ids = {"conversation_contact_name", "conversation_contact_status", "contact_name", "title", "conversation_title"};
-            for (String id : ids) {
-                AccessibilityNodeInfo n = s.find("#" + id, false);
-                String t = n == null ? "" : text(n).trim();
-                if (!t.isEmpty()) return t;
-            }
-        } catch (Throwable ignored) {}
-        return null;
-    }
 
-    /** True when the chat we opened looks like that person (their name, or the tail of their number). */
-    private static boolean titleMatches(String title, Person p) {
-        String t = norm(title), n = norm(p.name);
-        if (t.isEmpty()) return true;
-        if (!n.isEmpty()) {
-            if (t.equals(n) || t.contains(n) || n.contains(t)) return true;
-            for (String w : n.split("\\s+")) if (w.length() >= 3 && t.contains(w)) return true;
-        }
-        String d = p.number == null ? "" : p.number.replaceAll("\\D", "");
-        if (d.length() >= 4 && t.replaceAll("\\D", "").contains(d.substring(d.length() - 4))) return true;
-        return n.isEmpty();
-    }
 
-    /** Ends a WhatsApp (or normal) call that is on screen right now. */
-    private static Out hangup(Context c) {
-        DanavAccess s = DanavAccess.me;
-        if (s != null) {
-            AccessibilityNodeInfo b = s.waitFor(null, new String[]{"com.whatsapp:id/end_call_btn", "com.whatsapp:id/call_end_button"},
-                    new String[]{"End call", "End Call", "Hang up", "End"}, 3000);
-            if (b != null && s.click(b, false)) {
-                sleep(900);
-                AccessibilityNodeInfo still = s.waitFor(null, new String[]{"com.whatsapp:id/end_call_btn", "com.whatsapp:id/call_end_button"}, null, 900);
-                if (still != null) return bad("The end-call button was pressed but the call is still on screen. Tell the user to end it themselves." + now(s));
-                LiveCall.endBridge();
-                return new Out("The call was ended. Danav is back with the user and listening again.", false).as(true);
-            }
-        }
-        try {
-            if (has(c, Manifest.permission.ANSWER_PHONE_CALLS)) {
-                android.telecom.TelecomManager tm = (android.telecom.TelecomManager) c.getSystemService(Context.TELECOM_SERVICE);
-                if (tm != null && tm.isInCall()) { tm.endCall(); sleep(700); LiveCall.endBridge(); return new Out("The call was ended. Danav is back with the user and listening again.", false); }
-            }
-        } catch (Throwable ignored) {}
-        return bad("I couldn't find a call to end on the screen.");
-    }
 
-    private static Out call(Context c, String who) {
-        Object o = pick(c, who, false);
-        if (o instanceof String) return bad((String) o);
-        Person p = (Person) o;
-        Uri tel = Uri.parse("tel:" + Uri.encode(p.number));
-        if (has(c, Manifest.permission.CALL_PHONE)) {
-            start(c, new Intent(Intent.ACTION_CALL, tel));
-            sleep(1800);
-            try {
-                android.telecom.TelecomManager tm = (android.telecom.TelecomManager) c.getSystemService(Context.TELECOM_SERVICE);
-                if (tm != null && !tm.isInCall())
-                    return bad("The call to " + p.name + " did NOT start — the dialer opened but no call is running. Tell the user plainly." + now2());
-            } catch (Throwable ignored) {}
-            return new Out("Calling " + p.name + " (" + p.number + ").", false, true, false).as(true);
-        }
-        start(c, new Intent(Intent.ACTION_DIAL, tel));
-        DanavAccess s = DanavAccess.me;
-        if (s != null) {
-            AccessibilityNodeInfo b = s.waitFor(null, null, new String[]{"Call", "Dial", "Voice call"}, 4000);
-            if (b != null && s.click(b, false)) return new Out("Calling " + p.name + ". Say a very short goodbye — this Danav call closes now.", false, true, false);
-        }
-        return new Out("Opened the dialer with " + p.name + "'s number, but the call itself did not start — the user must press call. Allow Phone calls in Danav AI → Phone control to call directly.", false).as(false);
-    }
-
-    private static Out sms(Context c, String who, String msg) {
-        Object o = pick(c, who, false);
-        if (o instanceof String) return bad((String) o);
-        Person p = (Person) o;
-        Intent i = new Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(p.number))).putExtra("sms_body", msg);
-        start(c, i);
-        DanavAccess s = DanavAccess.me;
-        if (s == null) return new Out("Opened the SMS to " + p.name + " with the text typed, but it was not sent — the user must tap send. " + NEED_ACCESS, false).as(false);
-        AccessibilityNodeInfo b = s.waitFor(null, new String[]{"com.google.android.apps.messaging:id/send_message_button_icon", "com.google.android.apps.messaging:id/send_message_button_container",
-                "com.samsung.android.messaging:id/send_button1", "com.samsung.android.messaging:id/send_button"}, new String[]{"Send SMS", "Send message", "Send", "SMS"}, 8000);
-        if (b == null) return badLook("The SMS send button wasn't found." + now(s));
-        if (!s.click(b, false)) return badLook("Couldn't press send." + now(s));
-        sleep(700);
-        // the text box must be empty now, otherwise nothing was really sent
-        AccessibilityNodeInfo box = s.find("Type a message", true);
-        if (box == null) box = s.find("", true);
-        if (box != null && text(box).trim().equals(msg.trim()))
-            return bad("Pressed send but the message is still in the box — it did NOT go out." + now(s));
-        return new Out("SMS sent to " + p.name + ".", false).as(true);
-    }
-
-    private static Out email(Context c, String to, String subject, String body) {
-        Object o = pick(c, to, true);
-        if (o instanceof String) return bad((String) o);
-        Person p = (Person) o;
-        Intent i = new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + Uri.encode(p.email)))
-                .putExtra(Intent.EXTRA_EMAIL, new String[]{p.email}).putExtra(Intent.EXTRA_SUBJECT, subject == null ? "" : subject).putExtra(Intent.EXTRA_TEXT, body == null ? "" : body);
-        boolean gmail = installed(c, GMAIL);
-        if (gmail) i.setPackage(GMAIL);
-        try { start(c, i); } catch (ActivityNotFoundException e) { return bad("No email app is installed."); }
-        DanavAccess s = DanavAccess.me;
-        if (s == null) return new Out("Opened the email to " + p.email + " ready to send, but it was not sent — the user must tap Send. " + NEED_ACCESS, false).as(false);
-        AccessibilityNodeInfo b = s.waitFor(gmail ? GMAIL : null, new String[]{GMAIL + ":id/send"}, new String[]{"Send"}, 9000);
-        if (b == null) return badLook("The email's Send button wasn't found." + now(s));
-        if (!s.click(b, false)) return badLook("Couldn't press Send." + now(s));
-        sleep(600);
-        return new Out("Email sent to " + p.email + ".", false);
-    }
 
     // ------------------------------------------------------------------ media, apps, places
 
-    private static final Pattern YT_ITEM = Pattern.compile("\"videoRenderer\":\\{\"videoId\":\"([\\w-]{11})\".{0,1500}?\"title\":\\{\"runs\":\\[\\{\"text\":\"((?:[^\"\\\\]|\\\\.)*)\"", Pattern.DOTALL);
-    private static final Pattern YT_ID = Pattern.compile("\"videoId\":\"([\\w-]{11})\"");
-
-    /** Finds the top result on YouTube and opens it in the YouTube app, so it plays right away. */
-    private static Out youtube(Context c, String q) {
-        String id = null, title = null;
-        try {
-            HttpURLConnection h = (HttpURLConnection) new URL("https://www.youtube.com/results?search_query=" + enc(q) + "&hl=en").openConnection();
-            h.setConnectTimeout(6000); h.setReadTimeout(8000);
-            h.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36");
-            h.setRequestProperty("Accept-Language", "en-US,en;q=0.8");
-            h.setRequestProperty("Cookie", "CONSENT=YES+1; SOCS=CAI");
-            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
-            try (InputStream in = h.getInputStream()) {
-                byte[] buf = new byte[16384]; int n;
-                while ((n = in.read(buf)) > 0 && bo.size() < 2_500_000) bo.write(buf, 0, n);
-            }
-            String sb = bo.toString("UTF-8");
-            Matcher m = YT_ITEM.matcher(sb);
-            if (m.find()) { id = m.group(1); title = new JSONObject("{\"t\":\"" + m.group(2) + "\"}").optString("t"); }
-            else { Matcher m2 = YT_ID.matcher(sb); if (m2.find()) id = m2.group(1); }
-        } catch (Exception ignored) {}
-        boolean app = installed(c, YT);
-        if (id != null) {
-            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=" + id));
-            if (app) i.setPackage(YT);
-            return launch(c, i, app ? YT : null, "YouTube" + (title != null ? " (" + title + ")" : ""), 9000);
-        }
-        if (app) {
-            Out o = launch(c, new Intent(Intent.ACTION_SEARCH).setPackage(YT).putExtra("query", q), YT, "YouTube search for \"" + q + "\"", 7000);
-            return o;
-        }
-        return launch(c, new Intent(Intent.ACTION_VIEW, Uri.parse("https://m.youtube.com/results?search_query=" + enc(q))), null, "YouTube in the browser", 9000);
-    }
 
     private static Out openApp(Context c, String name) {
         PackageManager pm = c.getPackageManager();
@@ -1181,39 +654,7 @@ final class Phone {
         } catch (Throwable t) { return null; }
     }
 
-    private static Out media(Context c, String action) {
-        int k;
-        switch (action) {
-            case "pause": k = KeyEvent.KEYCODE_MEDIA_PAUSE; break;
-            case "next": k = KeyEvent.KEYCODE_MEDIA_NEXT; break;
-            case "previous": k = KeyEvent.KEYCODE_MEDIA_PREVIOUS; break;
-            case "stop": k = KeyEvent.KEYCODE_MEDIA_STOP; break;
-            default: k = KeyEvent.KEYCODE_MEDIA_PLAY;
-        }
-        AudioManager am = (AudioManager) c.getSystemService(Context.AUDIO_SERVICE);
-        boolean wasPlaying = am.isMusicActive();
-        long t = SystemClock.uptimeMillis();
-        am.dispatchMediaKeyEvent(new KeyEvent(t, t, KeyEvent.ACTION_DOWN, k, 0));
-        am.dispatchMediaKeyEvent(new KeyEvent(t, t + 20, KeyEvent.ACTION_UP, k, 0));
-        if ("play".equals(action) || "pause".equals(action)) {
-            sleep(900);
-            boolean playing = am.isMusicActive();
-            if ("play".equals(action) && !playing && !wasPlaying)
-                return bad("Nothing started playing — no music or video app is playing anything. Open the app, start the song or video, "
-                        + "then I can play/pause/next it." + now3());
-            if ("pause".equals(action) && playing)
-                return bad("The sound is still playing — the app ignored the pause key." + now3());
-        }
-        return new Out("Done: " + action + ".", false).as(true);
-    }
 
-    private static Out navigate(Context c, String dest, String mode) {
-        String m = "walking".equals(mode) ? "walking" : "transit".equals(mode) ? "transit" : "bike".equals(mode) ? "bicycling" : "driving";
-        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=" + enc(dest) + "&travelmode=" + m + ("transit".equals(m) ? "" : "&dir_action=navigate")));
-        boolean maps = installed(c, "com.google.android.apps.maps");
-        if (maps) i.setPackage("com.google.android.apps.maps");
-        return launch(c, i, maps ? "com.google.android.apps.maps" : null, "directions to " + dest, 9000);
-    }
 
     private static Out openUrl(Context c, String url) {
         String u = url.trim();
@@ -1238,79 +679,157 @@ final class Phone {
 
     // ------------------------------------------------------------------ device
 
-    private static Out settings(Context c, String page) {
-        String a;
-        switch (page) {
-            case "wifi": a = Settings.ACTION_WIFI_SETTINGS; break;
-            case "bluetooth": a = Settings.ACTION_BLUETOOTH_SETTINGS; break;
-            case "mobile_data": a = Settings.ACTION_DATA_ROAMING_SETTINGS; break;
-            case "hotspot": a = "android.settings.TETHER_SETTINGS"; break;
-            case "airplane": a = Settings.ACTION_AIRPLANE_MODE_SETTINGS; break;
-            case "display": a = Settings.ACTION_DISPLAY_SETTINGS; break;
-            case "sound": a = Settings.ACTION_SOUND_SETTINGS; break;
-            case "battery": a = Intent.ACTION_POWER_USAGE_SUMMARY; break;
-            case "location": a = Settings.ACTION_LOCATION_SOURCE_SETTINGS; break;
-            case "apps": a = Settings.ACTION_APPLICATION_SETTINGS; break;
-            case "notifications": a = Build.VERSION.SDK_INT >= 26 ? "android.settings.ALL_APPS_NOTIFICATION_SETTINGS" : Settings.ACTION_SETTINGS; break;
-            case "storage": a = Settings.ACTION_INTERNAL_STORAGE_SETTINGS; break;
-            case "security": a = Settings.ACTION_SECURITY_SETTINGS; break;
-            case "accessibility": a = Settings.ACTION_ACCESSIBILITY_SETTINGS; break;
-            case "date_time": a = Settings.ACTION_DATE_SETTINGS; break;
-            case "language": a = Settings.ACTION_LOCALE_SETTINGS; break;
-            case "nfc": a = Settings.ACTION_NFC_SETTINGS; break;
-            case "dnd": a = "android.settings.ZEN_MODE_SETTINGS"; break;
-            case "about": a = Settings.ACTION_DEVICE_INFO_SETTINGS; break;
-            case "danav": a = Settings.ACTION_APPLICATION_DETAILS_SETTINGS; break;
-            default: a = Settings.ACTION_SETTINGS;
-        }
-        Intent i = new Intent(a);
-        if ("danav".equals(page)) i.setData(Uri.parse("package:" + c.getPackageName()));
-        try { return launch(c, i, "com.android.settings", page.replace('_', ' ') + " settings", 5000); }
-        catch (Exception e) { return launch(c, new Intent(Settings.ACTION_SETTINGS), "com.android.settings", "settings", 5000); }
-    }
 
-    private static Out volume(Context c, String stream, String level) {
-        AudioManager am = (AudioManager) c.getSystemService(Context.AUDIO_SERVICE);
-        int st = "ring".equals(stream) ? AudioManager.STREAM_RING : "alarm".equals(stream) ? AudioManager.STREAM_ALARM : "call".equals(stream) ? AudioManager.STREAM_VOICE_CALL : AudioManager.STREAM_MUSIC;
-        int max = am.getStreamMaxVolume(st), cur = am.getStreamVolume(st), v;
-        String l = level == null ? "" : level.trim().toLowerCase(Locale.ROOT).replace("%", "");
-        if (l.equals("up")) v = cur + Math.max(1, max / 6);
-        else if (l.equals("down")) v = cur - Math.max(1, max / 6);
-        else if (l.equals("mute") || l.equals("off")) v = 0;
-        else if (l.equals("max") || l.equals("full")) v = max;
-        else { try { v = Math.round(Float.parseFloat(l) / 100f * max); } catch (Exception e) { return bad("Say a level 0-100, up, down or mute."); } }
-        v = Math.max(0, Math.min(max, v));
-        try { am.setStreamVolume(st, v, AudioManager.FLAG_SHOW_UI); }
-        catch (SecurityException e) { return bad("Android didn't allow changing that volume (Do Not Disturb is on)."); }
-        return new Out(stream + " volume is now " + Math.round(v * 100f / max) + "%.", false);
-    }
 
-    private static Out torch(Context c, boolean on) throws Exception {
-        CameraManager cm = (CameraManager) c.getSystemService(Context.CAMERA_SERVICE);
-        for (String id : cm.getCameraIdList()) {
-            Boolean f = cm.getCameraCharacteristics(id).get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
-            if (Boolean.TRUE.equals(f)) { cm.setTorchMode(id, on); return new Out("Flashlight " + (on ? "on." : "off."), false); }
-        }
-        return bad("This phone has no flashlight.");
-    }
 
-    private static Out alarm(Context c, int h, int m, String label) {
-        if (h < 0 || h > 23 || m < 0 || m > 59) return bad("Give the alarm time as hour 0-23 and minute.");
-        Intent i = new Intent(AlarmClock.ACTION_SET_ALARM).putExtra(AlarmClock.EXTRA_HOUR, h).putExtra(AlarmClock.EXTRA_MINUTES, m).putExtra(AlarmClock.EXTRA_SKIP_UI, true);
-        if (label != null && !label.isEmpty()) i.putExtra(AlarmClock.EXTRA_MESSAGE, label);
-        try { start(c, i); } catch (ActivityNotFoundException e) { return bad("No clock app can set alarms."); }
-        return new Out(String.format(Locale.US, "Alarm set for %02d:%02d.", h, m), false);
-    }
 
-    private static Out timer(Context c, int sec, String label) {
-        if (sec <= 0) return bad("Give the timer length.");
-        Intent i = new Intent(AlarmClock.ACTION_SET_TIMER).putExtra(AlarmClock.EXTRA_LENGTH, sec).putExtra(AlarmClock.EXTRA_SKIP_UI, true);
-        if (label != null && !label.isEmpty()) i.putExtra(AlarmClock.EXTRA_MESSAGE, label);
-        try { start(c, i); } catch (ActivityNotFoundException e) { return bad("No clock app can set timers."); }
-        return new Out("Timer started for " + (sec >= 60 ? (sec / 60) + " min " + (sec % 60 > 0 ? (sec % 60) + " s" : "") : sec + " s").trim() + ".", false);
-    }
 
     // ------------------------------------------------------------------ generic screen control
+
+    /** The phone's own keys — the same ones a person presses, whatever is on screen. */
+    private static Out key(String action) {
+        DanavAccess s = DanavAccess.me;
+        String a = action == null ? "" : action.trim().toLowerCase(Locale.ROOT).replace(' ', '_');
+        try {
+            switch (a) {
+                case "back": case "home": case "recents": case "notifications": case "quick_settings": case "lock": case "screenshot": case "wake":
+                    if (a.equals("wake")) { wakeScreen(DanavAccess.me != null ? DanavAccess.me : null); return new Out("Woke the screen.", false).as(true); }
+                    if (a.equals("lock")) { if (s == null) return bad(NEED_ACCESS); }
+                    if (s == null) return bad(NEED_ACCESS);
+                    if (!s.global(a)) return bad("That key is not supported on this phone.");
+                    sleep(600);
+                    return new Out("Pressed " + a.replace('_', ' ') + "." + now(s), true).as(true);
+                case "enter":
+                    if (s == null) return bad(NEED_ACCESS);
+                    return s.enter() ? new Out("Pressed enter." + now(s), true).as(true) : bad("Couldn't press enter — no field on screen has the keyboard.");
+                case "volume_up": case "volume_down": case "volume_mute": {
+                    AudioManager am = (AudioManager) c(AUDIO);
+                    if (am == null) return bad("This phone gives no volume control.");
+                    int dir = a.equals("volume_up") ? AudioManager.ADJUST_RAISE : a.equals("volume_down") ? AudioManager.ADJUST_LOWER : AudioManager.ADJUST_TOGGLE_MUTE;
+                    am.adjustStreamVolume(AudioManager.STREAM_MUSIC, dir, AudioManager.FLAG_SHOW_UI);
+                    return new Out("Volume " + a.replace("volume_", "") + "." + now3(), false).as(true);
+                }
+                case "play_pause": case "next": case "previous": {
+                    AudioManager am = (AudioManager) c(AUDIO);
+                    if (am == null) return bad("This phone gives no media keys.");
+                    boolean playing = am.isMusicActive();
+                    int code = a.equals("next") ? KeyEvent.KEYCODE_MEDIA_NEXT : a.equals("previous") ? KeyEvent.KEYCODE_MEDIA_PREVIOUS
+                            : (playing ? KeyEvent.KEYCODE_MEDIA_PAUSE : KeyEvent.KEYCODE_MEDIA_PLAY);
+                    am.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, code));
+                    am.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, code));
+                    sleep(700);
+                    if (a.equals("play_pause")) {
+                        boolean after = am.isMusicActive();
+                        if (playing && after) return bad("The sound is still playing — the app ignored the pause key." + now3());
+                        if (!playing && !after) return bad("Nothing started playing — no music or video is playing anything." + now3());
+                        return new Out((playing ? "Paused." : "Playing.") + now3(), false).as(true);
+                    }
+                    return new Out("Sent " + a + " to the player." + now3(), false).as(true);
+                }
+                default: return bad("Unknown key. Use back, home, recents, enter, notifications, quick_settings, lock, screenshot, wake, volume_up/down/mute, play_pause, next, previous.");
+            }
+        } catch (Throwable t) { return bad("That key failed: " + Net.describe(t)); }
+    }
+
+    private static final String AUDIO = Context.AUDIO_SERVICE;
+    private static Object c(String service) { Context x = DanavAccess.me; return x == null ? null : x.getSystemService(service); }
+
+    /** Waits, then tells the model what the screen looks like now — "wait, then look", never guess. */
+    private static Out waitFor(String seconds) {
+        double sec;
+        try { sec = Double.parseDouble(seconds); } catch (Exception e) { sec = 1; }
+        sec = Math.max(0.2, Math.min(15, sec));
+        sleep((long) (sec * 1000));
+        DanavAccess s = DanavAccess.me;
+        return new Out("Waited " + (sec >= 1 ? Math.round(sec) + " s" : Math.round(sec * 1000) + " ms") + "." + (s == null ? "" : now(s)), true).as(true);
+    }
+
+    /** The situation right now, so the model never has to ask the user what is on his own phone. */
+    private static Out phoneState(Context ctx) {
+        StringBuilder b = new StringBuilder("Phone right now:");
+        try {
+            java.util.Calendar cal = java.util.Calendar.getInstance();
+            b.append(" it is ").append(new java.text.SimpleDateFormat("EEEE h:mm a", Locale.ENGLISH).format(cal.getTime()));
+            DanavAccess s = DanavAccess.me;
+            if (s != null) {
+                String pkg = s.pkg();
+                if (pkg != null && !pkg.isEmpty()) b.append(", on screen: ").append(s.appLabel(pkg)).append(" (").append(pkg).append(')');
+                b.append(", screen ").append(s.getResources().getDisplayMetrics().widthPixels).append('x')
+                        .append(s.getResources().getDisplayMetrics().heightPixels);
+            } else b.append(", phone control is off");
+            b.append(", ").append(locked(ctx) ? "the phone is LOCKED" : "unlocked");
+            try {
+                AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+                if (am != null) b.append(", sound ").append(am.isMusicActive() ? "playing" : "not playing");
+            } catch (Throwable ignored) {}
+            try {
+                android.os.BatteryManager bm = (android.os.BatteryManager) ctx.getSystemService(Context.BATTERY_SERVICE);
+                int lvl = bm == null ? -1 : bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
+                if (lvl >= 0) b.append(", battery ").append(lvl).append('%');
+            } catch (Throwable ignored) {}
+            String call = callOnScreen();
+            b.append(", ").append(call.isEmpty() ? "no call on the screen" : "a call looks open with \"" + call + "\"");
+            if (LiveCall.bridging()) b.append(" (you are on that call right now)");
+            b.append(".");
+        } catch (Throwable t) { b.append(" (couldn't read it: ").append(Net.describe(t)).append(')'); }
+        return new Out(b.toString(), false).as(true);
+    }
+
+    /** The name at the top of a call screen, or "" when no call screen is open. */
+    private static String callOnScreen() {
+        DanavAccess s = DanavAccess.me;
+        if (s == null) return "";
+        try {
+            String pkg = s.pkg();
+            if (pkg == null) return "";
+            boolean calling = pkg.contains("dialer") || pkg.contains("incallui") || pkg.contains("telecom") || pkg.contains("whatsapp");
+            if (!calling) return "";
+            String t = s.read();
+            if (t == null) return "";
+            boolean looksLikeCall = t.contains("End call") || t.contains("end call") || t.contains("Mute") && t.contains("Speaker")
+                    || Pattern.compile("\\b\\d{1,2}:\\d{2}\\b").matcher(t).find();
+            if (!looksLikeCall) return "";
+            for (String line : t.split("\n")) {
+                String l = line.trim();
+                if (l.isEmpty() || l.length() > 40) continue;
+                if (l.matches("[0-9:+.\\s]+")) continue;
+                String low = l.toLowerCase(Locale.ROOT);
+                if (low.startsWith("end call") || low.startsWith("mute") || low.startsWith("speaker") || low.startsWith("video")
+                        || low.startsWith("add call") || low.startsWith("keypad") || low.startsWith("hold") || low.startsWith("search")
+                        || low.startsWith("call") || low.startsWith("back") || low.startsWith("message")) continue;
+                return l;
+            }
+            return "the person you called";
+        } catch (Throwable t) { return ""; }
+    }
+
+    /** Takes part in the call that is already on the screen — whatever app placed it. */
+    private static Out joinCall(Context ctx, String task, String say) {
+        if (DanavAccess.me == null) return bad(NEED_ACCESS);
+        String who = callOnScreen();
+        if (who.isEmpty()) return badLook("I don't see a call on the screen, so there is nothing to join. Open the call first (open the app, find the person, press its call button), then look at the screen and join it.");
+        if (LiveCall.bridging()) return new Out("Already on the call with " + who + ". Say what the user wants said.", false).as(true);
+        LiveCall.bridge(who, task == null ? "" : task);
+        if (say != null && !say.trim().isEmpty()) { sleep(500); LiveCall.say(say.trim()); }
+        return new Out("You are on the call with " + who + " now: you hear them through the loudspeaker and they hear you. Hold a real conversation in the user's language, short sentences, never repeat yourself. "
+                + "If you cannot hear them at all, say so once instead of guessing.", false).as(true);
+    }
+
+    private static Out leaveCall() {
+        if (!LiveCall.bridging()) return bad("You are not on a call right now.");
+        LiveCall.endBridge();
+        return new Out("You left the call; the user has the phone back.", false).as(true);
+    }
+
+    /** Opens a web page and returns its readable text (a small, honest wrapper around the web reader). */
+    private static Out readPage(String url) {
+        try {
+            JSONObject r = Web.read(url, 24000);
+            if (r.has("error")) return bad("I couldn't read that page: " + r.optString("error"));
+            String t = r.optString("text", "");
+            return new Out("Page: " + r.optString("title", url) + "\n" + cut(t), false).as(true);
+        } catch (Throwable t) { return bad("I couldn't read that page: " + Net.describe(t)); }
+    }
 
     private static Out readScreen() {
         DanavAccess s = DanavAccess.me;
@@ -1473,13 +992,6 @@ final class Phone {
         return new Out("Moved " + n + (n == 1 ? " page " : " pages ") + dir + "." + now(s), true);
     }
 
-    private static Out system(String action) {
-        DanavAccess s = DanavAccess.me;
-        if (s == null) return bad(NEED_ACCESS);
-        if (!s.global(action)) return bad("That isn't supported on this phone.");
-        if ("lock".equals(action) || "screenshot".equals(action)) return new Out("Done.", false);
-        return new Out("Done." + now(s), true);
-    }
 
     /**
      * A real, on-device proof that Danav can drive the phone: it looks at the screen, takes a picture of it and

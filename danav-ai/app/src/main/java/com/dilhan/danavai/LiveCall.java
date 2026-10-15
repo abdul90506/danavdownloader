@@ -72,7 +72,6 @@ final class LiveCall {
     private boolean micReleased;   // that call owns the microphone right now
     private volatile boolean micForBridge;   // capture is on the plain MIC source because Danav is on somebody's call
     private volatile boolean bridgeDeaf;     // the phone is not giving Danav the call audio
-    private volatile long ttsUntil;          // the filler voice is speaking until then (mic stays quiet for the model)
     private String bridgeName;               // who Danav is talking to on that call
     private long bridgeSilentSince;          // since when nothing but silence has come in on the bridge
     private Thread micThread, playThread;
@@ -97,6 +96,8 @@ final class LiveCall {
     private volatile long lastServer = SystemClock.elapsedRealtime();   // last message of any kind from the service
     private volatile long lastUtter;                                    // when the user's voice last went out
     private volatile long lastSpoke;                                    // when Danav's own voice last stopped
+    private volatile long lastWrite;                                    // the last time audio really went to the speaker
+    private volatile long lastShotAt;                                   // the last screenshot sent to the model
     private volatile boolean waiting;                                   // the user spoke; the service owes us a reply
     private int resumes;                                                // sessions put back up during this call
     private long lastResumeAt;                                          // when the last one happened (so a healthy gap resets the count)
@@ -115,10 +116,13 @@ final class LiveCall {
             if (running <= 0) return;
             long nowMs = SystemClock.elapsedRealtime();
             if (!bridge && !speaking && !muted && nowMs - lastUtter > 2500) {
-                String line = busytick > 1 ? "Still working on it." : "One moment.";
+                // The filler is spoken BY THE MODEL, through the one audio path the call already uses.
+                // (A second engine — Android's text-to-speech — used to say these lines, and it took the
+                // audio route away from Danav: his own voice went silent after "working on it". Removed.)
+                if (busytick > 2) { ui.postDelayed(this, 6000); return; }
                 busytick++;
-                ttsUntil = SystemClock.elapsedRealtime() + 2400;      // the filler is heard through the same microphone
-                Talk.say(ctx, line);
+                textTurn(busytick > 2 ? "The step is still going. Say one very short line that you are still on it, nothing else." :
+                        "The step is taking a few seconds. Say one very short line that you are on it, then stop. Nothing else.", false);
             }
             ui.postDelayed(this, 6000);
         }
@@ -313,7 +317,6 @@ final class LiveCall {
         Ai.warm(ctx);                                  // the real model list, fetched out of the way
         state("connecting", "");
         connect();
-        Talk.prepare(ctx);                             // ready for the short "one moment" lines
         ui.post(levelTick);
         ui.removeCallbacks(watchdog);
         ui.postDelayed(watchdog, 3000);
@@ -344,26 +347,25 @@ final class LiveCall {
             "\nYour memory: the app records every action it runs for you, and it is given to you at the start of every call "
             + "and with every step. If the user asks what you did, what is left, or why something happened, call the recall tool "
             + "and read the real log — never guess and never say you did not do something that is in the log.\n";
-    private static final String PHONE_RULES = "\n\nYou can control this phone with your tools. When the user asks for something on the phone, do it right away with the tools "
-            + "instead of explaining how: WhatsApp messages (just the contact name is enough — call whatsapp_message directly, don't ask for the number), calls, SMS, email, "
-            + "YouTube, opening apps, settings, alarms, timers, volume, flashlight, maps, and anything else in any app using read_screen, tap, type_text, scroll and system_action. "
-            + "Write messages exactly as the user wants them (same language; Roman Urdu stays Roman Urdu) and send them without asking again. "
-            + "Don't ask for confirmation for simple, clear requests; only ask when a contact is ambiguous or the request is risky (deleting, paying, posting publicly). "
-            + "For multi-step tasks in other apps: read_screen, act, check the new screen in the tool result, and continue until it is done. "
-            + "Never invent a contact, a number or a chat: if a contact isn't found or two people share a name, ask one very short question and stop — do not guess. "
-            + "If you did not clearly hear a name, a number or a message, ask once (\"kis ko?\" / \"kya likhun?\") instead of acting on a guess. "
-            + "Before anything that leaves the phone (a message, a call, an email) make sure the tool result says it really went through; if it doesn't say so, tell the user plainly what happened. "
-            + "For lists and pages use scroll; to move a whole page, a story or a carousel use swipe; if a tap lands on the wrong thing, read_screen again and retry once. "
-            + "Never repeat a sentence you have already said on this call. "
-            + "While you are doing something, keep the user posted with ONE short line as you start (\\\"dekhta hoon\\\", \\\"ruko, WhatsApp khol raha hoon\\\", \\\"check kar raha hoon\\\") — "
-            + "screen work can take a few seconds and silence makes the user think the call died. Never say a result before the tool has given it to you. "
-            + "Once a message is sent, a call is started, an app is opened, a song is played or a timer is set, say nothing further about it at all — "
-            + "no \"message send kar diya\", no \"done\", no report. Answer only what the user actually asked, in one short sentence. Speak about a task only if it failed, if you need "
-            + "a decision, or if the user asks about it. Report results honestly from the tool results; never claim something worked when the tool says it didn't. "
-            + "Memory: silently call remember whenever the user tells you something durable about themselves (name, city, language, family, work, routine, likes, dislikes, how they want "
-            + "answers), and use what you already remember from earlier talks without telling them you remember it. "
-            + "When the user says bye / bas / band karo, say a very short goodbye and call end_call. Otherwise never end the call yourself — stay on the line and wait, even when the "
-            + "user goes quiet for a long time.";
+    /**
+     * How Danav drives the phone. Nothing here is about one particular task — these are eyes, hands and the
+     * loop a person uses on any phone: look, act, look again. Whatever the user asks for, the same method
+     * works: open the app, read or look at the screen, tap the right thing, check, carry on until it is done.
+     */
+    private static final String PHONE_RULES = "\n\nYou are the user's hands and eyes on this phone. You can do ANYTHING the phone can do, the same way the user does it himself, and you never tell him how to do it — you just do it.\n"
+            + "Your eyes: read_screen (all the words on the screen, exactly as written) and see_screen (a real picture of the screen — use it for chats, photos, videos, games, maps, anything where words are not enough). phone_state tells you the situation (which app, locked or not, a call open, sound playing).\n"
+            + "Your hands: open_app (any app by name), open_url, tap and tap_xy, long_press, type_text, key (back, home, recents, enter, notifications, quick settings, volume, media keys, lock, screenshot), scroll, swipe (whole pages), drag, set_slider, wait.\n"
+            + "How you work on EVERY task, without exception:\n"
+            + "1. Look first: read_screen, and see_screen when the picture matters. Never guess what is on a screen you have not looked at.\n"
+            + "2. Do ONE step, the smallest one that moves the task forward, and keep it fast.\n"
+            + "3. Look again at what your step did (the result comes with a fresh picture of the screen). If it did not work, do not repeat it — look again and try a different way (scroll, search inside the app, another button, back and try again, or another app).\n"
+            + "4. Keep going, step by step, until the user's goal is really done, then say one short line about it and stop.\n"
+            + "Apps are just apps: if something can be done in an app, open that app and drive it. If a screen has a search box, use it — tapping it and typing is usually the fastest way to a person, a song, a video or a setting. If you are unsure how an app works, look at its screen and think; if you still need to, use web_search to find out how it is done, then do it.\n"
+            + "Taking part in calls: a call is started like anything else — open the app (WhatsApp, the phone app, any app), find the person (search inside the app by name), open the chat or contact, press its call button, wait for them to pick up (wait, then look) — and then call join_call, and you are on that call yourself: you hear them through the loudspeaker and your voice goes to them, so talk with them properly, in the user's language, short sentences, and never repeat yourself. leave_call when the user wants the phone back.\n"
+            + "Honesty: believe only what a tool result says. Never say something happened unless the result says it happened; if it failed, say plainly what happened and try another way. Never invent a contact, a number, a chat or a message the user did not ask for. If you truly cannot hear a name or a message, ask one very short question instead of guessing.\n"
+            + "Manner: while you work, keep the user company with ONE very short line when you start (\"dekhta hoon\", \"ruko\", \"khol raha hoon\") — then silence until you know the result. When it is done, say the result in one short sentence and nothing more: no reports, no repetitions, no \"done?\" questions. Only speak up again if something failed, if you need a decision, or if the user asks.\n"
+            + "Memory: call remember silently whenever the user tells you something durable about himself; use what you remember without announcing it; recall when he asks what you did or what you know.\n"
+            + "When the user says bye / bas / band karo, say a very short goodbye and call end_call. Otherwise never end the call yourself — stay on the line and wait quietly, however long the silence is.";
     private static final String WAKE_RULES = "\n\nIMPORTANT: the user woke you up on purpose by pressing the volume-up button three times — the Danav circle is on screen now. "
             + "If they start talking straight away, just do what they ask. If you hear nothing yet, greet them with one short word or line (\"Ji?\" / \"Haan, boliye\") and wait. "
             + "Never call dismiss — the user opened this themselves. "
@@ -574,8 +576,16 @@ final class LiveCall {
                 }
                 lastAct = SystemClock.elapsedRealtime();
                 if (out.dismiss) { ui.post(() -> { WakeService.cooldown(ctx, 90_000); synchronized (LiveCall.class) { if (cur == this) cur = null; } end(true); }); return; }
-                // eyes when the model asked for them, and always after a failed step (that is when it needs to look)
-                if ((out.look || !out.ok) && !ScreenShare.active()) { String img = Phone.shotB64(); if (img != null) video(img); }
+                // A picture with EVERY result — this is what Google's Computer Use guide means by "without the
+                // screenshot the model is blind": the model must see what its tap really did before it plans the
+                // next step. (It is also what made the old system feel blind and repeat itself.)
+                if ((out.look || !out.ok || Phone.isScreenTool(name)) && !ScreenShare.active() && !bridge) {
+                    long nowMs = SystemClock.elapsedRealtime();
+                    if (nowMs - lastShotAt > 1100) {                    // the live API expects about one frame a second
+                        String img = Phone.shotB64();
+                        if (img != null) { video(img); lastShotAt = nowMs; }
+                    }
+                }
                 if (id == null || id.isEmpty()) {
                     textTurn("The step \"" + name + "\" finished. Result: " + out.text, false);
                 } else {
@@ -664,7 +674,7 @@ final class LiveCall {
 
     private void endBusy() {
         synchronized (busyt) {
-            if (busyTools > 0 && --busyTools == 0) { ui.removeCallbacks(busyTick); Talk.hush(); }
+            if (busyTools > 0 && --busyTools == 0) ui.removeCallbacks(busyTick);
         }
     }
 
@@ -730,7 +740,15 @@ final class LiveCall {
                 // Half-duplex: while Danav's voice is coming out of the speaker the microphone is muted
                 // for the model, so he never hears himself and never cuts himself off mid-sentence.
                 // ---------------------------------------------------------------------------------
-                boolean quiet = muted || speaking || SystemClock.elapsedRealtime() - lastSpoke < 250 || SystemClock.elapsedRealtime() < ttsUntil;
+                // Danav's own voice mutes the microphone for the model (so he never hears himself), but that
+                // state must never stick: a stuck flag means the call stops hearing the user at all. If the
+                // "speaking" flag has been up while nothing was actually written for a while, drop it.
+                if (speaking && playQ.isEmpty() && SystemClock.elapsedRealtime() - lastWrite > 3000) {
+                    speaking = false;
+                    lastSpoke = SystemClock.elapsedRealtime();
+                    if (!muted) state("listening", "");
+                }
+                boolean quiet = muted || speaking || SystemClock.elapsedRealtime() - lastSpoke < 250;
                 boolean voice = false;
                 if (!quiet) {
                     double sum = 0;
@@ -805,6 +823,7 @@ final class LiveCall {
                         for (int i = 0; i < ns; i++) sh[i] = (short) ((pcm[off + i * 2] & 0xff) | (pcm[off + i * 2 + 1] << 8));
                         int w = tr.write(sh, 0, ns);
                         if (w <= 0) { fixTrack(); break; }               // the speaker object died → rebuild it, keep talking
+                        lastWrite = SystemClock.elapsedRealtime();
                         synchronized (ring) {
                             for (int i = 0; i < w; i++) ring[(int) ((written + i) % ring.length)] = sh[i];
                             written += w;
@@ -1029,7 +1048,8 @@ final class LiveCall {
         } catch (Exception ignored) {}
         CallService.stop(ctx);
         ui.removeCallbacks(busyTick);
-        Talk.shut();
+        // nothing of ours plays audio besides the call itself — the second engine is gone
+
         tools.shutdownNow();
         ui.post(CallBubble::hide);
         WakeService.callEnded(ctx);

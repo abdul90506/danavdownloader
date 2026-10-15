@@ -171,8 +171,6 @@ final class Bridge {
                     .put("apps", Phone.canStart(c))
                     .put("why", Phone.canStart(c) ? "" : Phone.startProblem(c))
                     .put("overlay", CallBubble.allowed(c))
-                    .put("contacts", Phone.has(c, android.Manifest.permission.READ_CONTACTS))
-                    .put("calls", Phone.has(c, android.Manifest.permission.CALL_PHONE))
                     .put("mic", Phone.has(c, android.Manifest.permission.RECORD_AUDIO))
                     .put("battery", Build.VERSION.SDK_INT < 23 || pm.isIgnoringBatteryOptimizations(c.getPackageName()))
                     .put("sdk", Build.VERSION.SDK_INT)
@@ -196,8 +194,6 @@ final class Bridge {
                         try { a.startActivity(i); } catch (Exception e) { a.startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION)); }
                         break;
                     }
-                    case "contacts": a.requestPermissions(new String[]{android.Manifest.permission.READ_CONTACTS}, REQ_PHONE); break;
-                    case "calls": a.requestPermissions(new String[]{android.Manifest.permission.CALL_PHONE}, REQ_PHONE); break;
                     case "mic": a.requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_PHONE); break;
                     case "battery":
                         a.startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + a.getPackageName()))); break;

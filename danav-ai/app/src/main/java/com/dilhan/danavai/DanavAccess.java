@@ -371,6 +371,16 @@ public class DanavAccess extends AccessibilityService {
         return first;
     }
 
+    /** Presses the keyboard's action key (enter / search / send / go) on the focused field, like a person would. */
+    boolean enter() {
+        try {
+            AccessibilityNodeInfo r = root();
+            AccessibilityNodeInfo n = r == null ? null : r.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+            if (n == null) { n = find("", true); }              // any editable field on screen
+            return n != null && submit(n);
+        } catch (Throwable t) { return false; }
+    }
+
     /** Presses the keyboard's action key (search / send / go) on the focused field when Android supports it. */
     boolean submit(AccessibilityNodeInfo n) {
         if (n == null || Build.VERSION.SDK_INT < 30) return false;

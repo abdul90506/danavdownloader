@@ -249,18 +249,13 @@ final class Ai {
                 + "Style: reply in the user's language and script (Roman Urdu if they write Roman Urdu, Urdu, Hindi, English…). Be clear, friendly and to the point. "
                 + "Use Markdown: short paragraphs, headings and lists when useful, tables for comparisons, and fenced code blocks with the language name for code. "
                 + "Do not use LaTeX; write maths with plain symbols (×, ÷, √, ², π).\n"
-                + "Phone tools: you are running inside the Danav app on the user's own phone and you really can do things on it from this chat — send WhatsApp or SMS "
-                + "messages, start calls, write emails, open apps, play YouTube, set alarms and timers, change volume, open settings, read the screen and tap, type, scroll "
-                + "or swipe in any app. Use them without asking twice: the user asked for it, so just do it. Only the obvious exceptions need a question first (sending something "
-                + "to an unclear contact, deleting, paying). The phone tools look inside WhatsApp itself before giving up, so a name that isn't in the phone's contacts is still found — "
-                + "trust the tool result and never say \"not found\" on your own guess. Only if the tool really says the person is nowhere, or two people share the name, ask one short question — "
-                + "never invent a number or a chat. "
-                + "Write messages in the user's own language and words. Believe only what a tool result says: if it says it failed, tell the user plainly. "
-                + "Your own memory: the app records every action it runs for you and the app tells you the latest ones at the start of every answer and every call. "
-                + "If the user asks what you did, what is left, or why something happened, call recall and read the real log — never guess, and never say you did not do "
-                + "something that is in that log. If a tool says a permission is missing, say in one short line which switch to turn on (Phone control → Contacts / "
-                + "Show over other apps) and ask if they want you to open that settings page. "
-                + "For lists scroll, to move a whole page or a story use swipe; if a tap lands on the wrong thing, look at the screen again and retry once.\n"
+                + "Phone: you are running inside the Danav app on the user's own phone, and you are his hands and eyes on it — you can do anything the phone can do, the same way he does it himself, and you never explain how: you just do it. "
+                + "Your eyes: read_screen (every word on the screen) and see_screen (a real picture — chats, photos, videos, games, maps, anything where words are not enough); phone_state for the situation. Your hands: open_app, open_url, tap, tap_xy, long_press, type_text, key (back, home, recents, enter, notifications, quick settings, volume, media keys, lock, screenshot), scroll, swipe, drag, set_slider, wait. "
+                + "The method for EVERY phone task: (1) look at the screen first — never guess what you have not looked at; (2) do ONE small step; (3) look again at what it really did — the result comes with a fresh picture of the screen — and if it did not work, do not repeat it, try another way; (4) keep going until it is really done, then say one short line and stop. "
+                + "Apps are just apps: open the one you need and drive it. A search box inside an app is usually the fastest way to a person, a song, a video or a setting; if you are unsure how something works, look at the screen and think, or web_search how it is done. "
+                + "Calls: start them the same way (open the app, find the person, press its call button, wait for them to pick up), then join_call to be on that call yourself and talk with them; leave_call to give the phone back. "
+                + "Believe only what a tool result says: never claim something worked unless the result says so, and if it failed, say plainly what happened and try another way — never invent a contact, a number or a chat. "
+                + "Do the work without asking twice; only ask one short question when a name is truly ambiguous or the action is risky (deleting, paying, posting publicly). "
                 + "Speed and effort: get to the answer without stalling. Never ask the user to confirm something they already clearly asked for — just do it, and pick a "
                 + "sensible default when a small detail is missing. For small, reversible steps always act instead of asking. Do every step yourself; never tell the user how to do it in another app.\n"
                 + "Personalisation: whenever the user tells you something durable about themselves or their world — their name, city, language or script, family, friends, work, "
@@ -376,6 +371,12 @@ final class Ai {
                         result = new JSONObject().put("success", out.ok).put("result", out.ok ? out.text
                                 : "FAILED — " + out.text + " Never tell the user this worked: say plainly what actually happened, or do it another way.");
                         if (!out.ok && out.look) wantLook = true;
+                        // every step that changes the screen comes back with a picture of what it really did:
+                        // without it the model is blind and starts guessing (Google's Computer Use guide)
+                        if (!"see_screen".equals(name) && Phone.isScreenTool(name) && shots < 3) {
+                            String img = Phone.shotB64();
+                            if (img != null && !img.isEmpty()) { shot = img; }
+                        }
                     }
                 } else if ("read_page".equals(name)) {
                     List<String> us = argList(args, "url", "urls", "link");
@@ -417,13 +418,14 @@ final class Ai {
      * moment a tool fails because a permission is missing, the app asks for exactly that one — a normal
      * Android dialog for contacts, the overlay page for "open other apps". Nothing happens without the user.
      */
+    /**
+     * When the thing that just blocked the user is a switch, the app opens that switch for him instead of
+     * only complaining: "open other apps" (the only permission Danav itself needs for phone control).
+     */
     private static void askForIt(Context ctx, String text) {
         if (text == null) return;
         try {
-            if (text.contains("Contacts permission is off") && !Phone.has(ctx, android.Manifest.permission.READ_CONTACTS)) {
-                android.app.Activity a = MainActivity.inst;
-                if (a != null) a.runOnUiThread(() -> a.requestPermissions(new String[]{android.Manifest.permission.READ_CONTACTS}, Bridge.REQ_PHONE));
-            } else if (text.contains("Display over other apps") && !Phone.canStart(ctx)) {
+            if (text.contains("Display over other apps") && !Phone.canStart(ctx)) {
                 android.app.Activity a = MainActivity.inst;
                 if (a != null) a.runOnUiThread(() -> {
                     try { a.startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + a.getPackageName()))); }
@@ -440,7 +442,7 @@ final class Ai {
                 .put(new JSONObject().put("inlineData", new JSONObject().put("mimeType", "image/jpeg").put("data", b64))));
     }
 
-    /** A short, clear command that the phone can handle itself (time, torch, volume, alarm, timer, call, app). */
+    /** A question the phone can answer instantly, without the network and without touching anything. */
     private static Fast.Hit fastHit(Context ctx, JSONObject req) {
         try {
             JSONArray msgs = req.optJSONArray("messages");
@@ -451,12 +453,7 @@ final class Ai {
             if (att != null && att.length() > 0) return null;                 // attachments need the model
             String text = last.optString("text", "").trim();
             if (text.isEmpty() || text.length() > 200) return null;
-            Fast.Hit h = Fast.match(ctx, text);
-            if (h == null) return null;
-            if (h.tool != null && DanavAccess.me == null
-                    && ("whatsapp_message".equals(h.tool) || "whatsapp_call".equals(h.tool) || "system_action".equals(h.tool)))
-                return null;                                                   // those need Phone control on
-            return h;
+            return Fast.match(ctx, text);
         } catch (Exception e) { return null; }
     }
 
@@ -879,6 +876,15 @@ final class Ai {
                             StringBuilder text = new StringBuilder(), thought = new StringBuilder();
                             for (int i = 0; i < parts.length(); i++) {
                                 JSONObject p = parts.getJSONObject(i);
+                                // Gemini 3.x requires the thoughtSignature of a function call to be sent back with it —
+                                // the API answers 400 "Function call is missing a thought_signature ... required for tools
+                                // to work correctly" and every multi-step task dies at the second round. The stream can
+                                // deliver that signature in its own later part, so it is folded into the call it belongs to.
+                                if (p.has("thoughtSignature") && !p.has("functionCall") && !p.has("text") && r.parts.length() > 0) {
+                                    JSONObject last = r.parts.getJSONObject(r.parts.length() - 1);
+                                    if (last.has("functionCall")) last.put("thoughtSignature", p.optString("thoughtSignature"));
+                                    continue;
+                                }
                                 r.parts.put(p);
                                 if (p.has("functionCall")) { r.calls.put(p.getJSONObject("functionCall")); any = true; continue; }
                                 String t = p.optString("text", "");
@@ -1013,7 +1019,7 @@ final class Ai {
             for (int i = 0; more != null && i < more.length(); i++) {
                 JSONObject d = more.getJSONObject(i);
                 String nm = d.optString("name");
-                if (nm.equals("end_call") || nm.equals("dismiss") || nm.equals("say_on_call") || nm.equals("hangup_call")) continue;  // voice-call only
+                if (nm.equals("end_call") || nm.equals("dismiss") || nm.equals("say_on_call")) continue;  // voice-call only
                 if (have.add(nm)) decls.put(d);
             }
         } catch (Exception ignored) {}

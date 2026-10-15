@@ -665,3 +665,94 @@ khud dhoondna nahi padta.
 WhatsApp/contacts/call ka asli UI, clipboard typing, aur live-voice ka asli mic — ye is computer par test nahi
 ho sakte. Isi liye Settings → Phone control → **"Test phone control"** button hai jo aap ko seedha sach batata
 hai, aur har nakami ka saaf message hai — jhooti kamyabi ka rasta code me nahi hai.
+
+---
+
+## 15 Oct 2026 — system poora naya: generic hands, aur "working on it" ke baad awaz band hone ka fix (round 8, Danav AI)
+
+Aap ne kaha: purana system hata do, specific-task tools nahi chahiye, AI khud screen dekh kar sab kare, aur
+"working on it" ke baad awaz mute ho jaati hai — ye round wohi karta hai.
+
+### 1. Awaz mute hone ki asal wajah (mil gayi aur hata di)
+
+App me **do audio engine** the: call ka apna audio, aur phone ka text-to-speech jo "One moment / Still
+working on it" bolta tha. Wohi doosra engine call ka audio route le leta tha — is liye "working on it" ke
+**baad Danav ki awaz gayab** ho jaati thi aur kuch sunai nahi deta tha.
+
+* `Talk.java` (poora text-to-speech) **delete** kar diya. Ab koi doosra audio engine app me nahi hai.
+* Kaam ke doran chhoti line ab **model khud** bolta hai — usi ek audio path par jo call pehle se use kar raha hai.
+* Ek watchdog bhi laga diya: agar Danav ki "bol raha hoon" wali flag 3 second se zyada atki rahe aur speaker par
+  kuch na ja raha ho, to flag khud saaf ho jata hai — pehle is flag ke atke rehne se mic (model ke liye) band
+  reh jata tha, yani call aap ki baat sun hi nahi sakti thi.
+* Is liye code me `TextToSpeech` ka koi zikr nahi bacha — awaz ka sirf **ek** rasta hai.
+
+### 2. Purana task-system poora khatam, naya generic system
+
+**Hataya gaya (sab "special tool"):** whatsapp_message, whatsapp_call, phone_call, sms_message, send_email,
+youtube_play, media_control, navigate, set_volume, flashlight, set_alarm, set_timer, open_settings — aur
+in ke saare helper code (WhatsApp ke andar search/chat/call ki fixed scripts, contacts lookup, YouTube
+scraping, media keys, torch, alarm) yani **~700 lines purana system delete**. Sath hi `Talk.java`, aur
+`READ_CONTACTS` / `CALL_PHONE` permissions bhi manifest se nikal diye (naye system ko in ki zaroorat nahi —
+naya system apps ke **apne** screen se dhoondta hai).
+
+**Naya system — sirf 25 generic tools, jaise ek insaan ke paas aankh aur haath hote hain:**
+
+| Kis liye | Tools |
+|---|---|
+| **Aankh** (dekhna) | `read_screen`, `see_screen` (asli tasveer model ko jati hai), `phone_state` |
+| **Haath** (karna) | `open_app`, `open_url`, `tap`, `tap_xy`, `long_press`, `type_text`, `key` (back/home/recents/enter/notifications/quick settings/volume/media/lock/screenshot), `scroll`, `swipe`, `drag`, `set_slider`, `wait` |
+| **Dimagh** | `web_search`, `read_page`, `remember`, `forget`, `recall` |
+| **Call par baat** | `join_call` (jo call screen par hai us par Danav shamil ho jata hai — WhatsApp/phone/koi bhi app), `leave_call`, `say_on_call` |
+
+Ye "task ke liye instruction" nahi hain — ye wohi cheezein hain jo aap khud karte hain. Systems instruction
+ab **generic method** sikhata hai: **dekho → ek chhota step karo → phir dekho ke hua ya nahi → agar nahi hua
+to doosra tareeqa → khatam hone tak**. (Ye Google ke apne Computer-Use guide wala Observe→Act loop hai.)
+
+### 3. Jo cheez is system ko "andha" banaye hue thi — ab theek
+
+Google ke guide ki sab se ahem baat: **"FunctionResponse ke sath screenshot lazmi hai — warna model andha
+hai aur agla qadam plan nahi kar sakta."** Pehle app sirf tab tasveer bhejti thi jab user screenshot maange
+ya step fail ho. **Ab har screen-wale step** (tap, type, scroll, swipe, drag, key, open_app, wait) ke natije
+ke sath **taaza screenshot** model ko jata hai. Live API ki hadd 1 frame/second ka khayal rakha gaya hai.
+
+### 4. Bara bug jo sirf test me pakra gaya: `thoughtSignature`
+
+Asli API ne 400 de kar bataya: *"Function call is missing a thought_signature … **required for tools to
+work correctly**"* — yani **doosre round me har multi-step kaam marta tha**. App ab function call ka
+`thoughtSignature` wapas bhejti hai (aur stream me signature alag chunk me aaye to usay us call me fold kar
+deti hai). Ye fix chat ke tool loop ko asal me chalta banata hai.
+
+### 5. Sab kuch test hua — asli screenshots par (sab se bara saboot)
+
+`tests/test_agent.py` asli model + asli 25 tools + **asli phone screens ki tasveerein** (yahan draw ki gayi
+hain, device nahi hai) use kar ke poora loop chalata hai, aur har qadam check karta hai:
+
+| Qadam | Kaam | Model ne kya kiya |
+|---|---|---|
+| 1 | "Amma ko WhatsApp par message: kal milte hain" | `open_app WhatsApp` |
+| 2 | WhatsApp ki list (search icon ke sath) | search dhoond kar daba |
+| 3 | search box khula | `Ammi` wali chat par tap |
+| 4 | chat khuli | `type_text "kal milte hain"` |
+| 5 | send button | `tap_xy 0.92, 0.90` (sahi jagah) |
+| 6 | "Amma ko WhatsApp call karo aur baat karo" | `tap "Call Ammi"` |
+| 7 | call screen (timer chal raha) | `join_call` + asli greeting: *"Assalamu Alaikum Ammi, main aap se baat kar raha hoon."* |
+| 8 | **bina kisi lafz wali screen** (map) | "laal pin" ko tasveer se pehchan kar `tap_xy 0.5, 0.49` |
+
+**8/8 qadam sahi.** Ye wohi hai jo aap ne kaha: koi special tool nahi — AI khud screen dekh kar kaam kar raha hai.
+
+### 6. Tests ka poora nateeja
+
+* `python3 tests/test_round6.py` → **84/84 static**, `--live` ke sath **89/89**
+* `tests/test_agent.py` → **8/8 agent steps** (upar wala table)
+* `check_apk.py` → 15/15 (dex me koi recognizer nahi, sirf mic ka raw audio; naye tools maujood)
+* `test_match.py` → 13/13; `test_honesty.py` → 50 cases `wrong: 0`; `build_tools.py` → **25 tools, dono sets**
+* Live: chat 25 tools → **HTTP 200**; voice WS 25 tools → **setupComplete**; tool-call → tool-response round
+  bina kisi error ke chala
+
+**APK:** `DanavAI-2.3.0-arm64.apk` (1,759,970 bytes · vc 14 · usi certificate se signed)
+
+### Jo sirf asli phone par pata chalega
+
+Asli apps ka UI, asli mic, asli call — ye is computer par nahi ho sakte. Isi liye Settings → Phone control →
+**"Test phone control"** wahi rehta hai jo aap ko seedha sach batata hai, aur har qadam ke sath tasveer
+model ko jati hai (yani ai "andaza" nahi lagata). Koi jhooti kamyabi ka rasta code me nahi hai.
